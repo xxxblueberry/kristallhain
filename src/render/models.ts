@@ -218,7 +218,119 @@ export function witchGeo() {
   ]);
 }
 
+export function queenGeo() {
+  // riesige Spinne mit Kristall-Hinterleib
+  const parts: THREE.BufferGeometry[] = [
+    part(ico(1.5, 1), 0x4a3a7a, [0, 1.6, -1.6], [0, 0, 0], [1, 0.85, 1.25]),
+    part(ico(0.9, 1), 0x3a2e5e, [0, 1.3, 0.4]),
+    part(ico(0.55, 0), 0x2e2448, [0, 1.25, 1.35]),
+  ];
+  for (const sx of [-1, 1]) for (let k = 0; k < 4; k++) {
+    const z = 0.9 - k * 0.55, spread = 0.5 - k * 0.3;
+    parts.push(part(box(0.16, 0.16, 1.9), 0x2e2448, [sx * 1.0, 1.7, z], [0.0, sx * (1.2 + spread), sx * 0.5]));
+    parts.push(part(box(0.13, 1.8, 0.13), 0x2e2448, [sx * 2.1, 0.85, z + spread * 0.6], [0, 0, sx * 0.25]));
+  }
+  for (const [x, y, z, c] of [[-0.3, 1.35, 1.88, 0xff4d8a], [0.3, 1.35, 1.88, 0xff4d8a], [-0.15, 1.5, 1.82, 0xff8ab8], [0.15, 1.5, 1.82, 0xff8ab8]] as [number, number, number, number][]) {
+    parts.push(part(box(0.12, 0.12, 0.05), c, [x, y, z]));
+  }
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2;
+    parts.push(part(oct(0.35), k % 2 ? 0xb89aff : 0x7fd8ff, [Math.sin(a) * 0.9, 2.5, -1.6 + Math.cos(a) * 1.0], [0.3, a, 0], [0.6, 1.8, 0.6]));
+  }
+  return merge(parts);
+}
+
+export function darkLordGeo() {
+  // gepanzerter Schattenfürst, ~7,5 m, Umhang, Kristallkrone, Großschwert
+  const A = 0x2a2238, B = 0x3c3050, C = 0x15111f, G = 0xc04dff, R = 0xff3b6b;
+  return merge([
+    part(box(1.0, 2.6, 1.0), A, [-0.75, 1.3, 0]),
+    part(box(1.0, 2.6, 1.0), A, [0.75, 1.3, 0]),
+    part(box(1.15, 0.5, 1.4), C, [-0.75, 0.25, 0.15]),
+    part(box(1.15, 0.5, 1.4), C, [0.75, 0.25, 0.15]),
+    part(box(2.6, 2.8, 1.6), B, [0, 4.0, 0], [0.08, 0, 0]),
+    part(box(2.2, 0.35, 1.7), C, [0, 2.7, 0]),
+    part(box(3.6, 0.8, 1.9), A, [0, 5.3, -0.05]),
+    part(box(0.9, 3.4, 0.9), A, [-2.1, 3.6, 0.3], [0.2, 0, 0.12]),
+    part(box(0.9, 3.4, 0.9), A, [2.1, 3.6, 0.3], [0.35, 0, -0.12]),
+    part(box(3.0, 4.6, 0.15), C, [0, 3.2, -0.95], [-0.08, 0, 0]),
+    part(box(1.1, 1.2, 1.1), C, [0, 6.3, 0.2]),
+    part(box(0.36, 0.14, 0.05), R, [-0.25, 6.35, 0.76]),
+    part(box(0.36, 0.14, 0.05), R, [0.25, 6.35, 0.76]),
+    part(cone(0.3, 1.2, 4), C, [-0.55, 7.1, 0.1], [0, 0, 0.4]),
+    part(cone(0.3, 1.2, 4), C, [0.55, 7.1, 0.1], [0, 0, -0.4]),
+    part(oct(0.3), G, [0, 7.2, 0.3], [0, 0, 0], [0.6, 1.8, 0.6]),
+    part(oct(0.22), G, [-0.35, 7.0, 0.35], [0, 0, 0.3], [0.6, 1.6, 0.6]),
+    part(oct(0.22), G, [0.35, 7.0, 0.35], [0, 0, -0.3], [0.6, 1.6, 0.6]),
+    // Großschwert in der rechten Hand
+    part(box(0.18, 5.2, 0.5), 0x8a7aa8, [2.4, 3.0, 1.4], [0.5, 0, 0]),
+    part(box(0.06, 5.0, 0.12), G, [2.4, 3.0, 1.45], [0.5, 0, 0]),
+    part(box(1.1, 0.2, 0.25), C, [2.4, 1.45, 0.45], [0.5, 0, 0]),
+  ]);
+}
+
+// ---- Welt: Biom-Requisiten ----
+export function deadTreeGeo() {
+  const W = 0x5a4a52, D = 0x463a42;
+  return merge([
+    part(cyl(0.16, 0.32, 2.4, 6), W, [0, 1.2, 0], [0.05, 0, 0.08]),
+    part(cyl(0.08, 0.15, 1.4, 5), D, [0.45, 2.5, 0], [0, 0, -0.8]),
+    part(cyl(0.07, 0.13, 1.3, 5), D, [-0.4, 2.7, 0.1], [0.2, 0, 0.9]),
+    part(cyl(0.05, 0.1, 1.0, 5), D, [0.1, 3.0, -0.35], [-0.7, 0, 0]),
+    part(cyl(0.04, 0.07, 0.7, 4), D, [0.95, 3.0, 0], [0, 0, -0.3]),
+    part(cyl(0.04, 0.07, 0.6, 4), D, [-0.85, 3.2, 0.1], [0, 0, 0.4]),
+  ]);
+}
+export function pillarGeo() {
+  const S = 0x8a8098, M = 0x5f8a6a;
+  return merge([
+    part(box(1.3, 0.35, 1.3), 0x6e6680, [0, 0.17, 0]),
+    part(cyl(0.48, 0.52, 1.4, 8), S, [0, 1.05, 0]),
+    part(cyl(0.46, 0.48, 1.1, 8), S, [0.03, 2.3, 0], [0.04, 0, 0.05]),
+    part(cyl(0.44, 0.46, 0.5, 8), 0x9a90a8, [0.08, 3.05, 0.04], [0.15, 0, 0.12]),
+    part(box(0.7, 0.12, 0.55), M, [0.1, 0.4, 0.5]),
+    part(box(0.4, 0.5, 0.4), 0x7a7090, [0.9, 0.25, 0.6], [0.3, 0.5, 0.2]),
+  ]);
+}
+export function crystalClusterGeo() {
+  return merge([
+    part(oct(0.7), 0x8a6aff, [0, 1.3, 0], [0.1, 0.3, 0.05], [0.6, 2.0, 0.6]),
+    part(oct(0.5), 0x5fc8ff, [0.6, 0.8, 0.2], [0.2, 0, -0.5], [0.6, 1.8, 0.6]),
+    part(oct(0.45), 0xd06aff, [-0.55, 0.7, -0.2], [-0.1, 0, 0.55], [0.6, 1.7, 0.6]),
+    part(oct(0.35), 0x7fe0ff, [0.1, 0.5, -0.6], [-0.5, 0, 0], [0.6, 1.6, 0.6]),
+    part(new THREE.DodecahedronGeometry(0.8), 0x4a4060, [0, 0.1, 0], [0, 0, 0], [1.3, 0.3, 1.3]),
+  ]);
+}
+export function obeliskGeo() {
+  return merge([
+    part(box(1.6, 0.4, 1.6), 0x3a3248, [0, 0.2, 0]),
+    part(cyl(0.45, 0.7, 4.2, 4), 0x2e283c, [0, 2.5, 0], [0, Math.PI / 4, 0]),
+    part(cone(0.47, 0.8, 4), 0x2e283c, [0, 5.0, 0], [0, Math.PI / 4, 0]),
+    part(box(0.08, 2.4, 0.08), 0xc04dff, [0, 2.6, 0.5]),
+    part(box(0.08, 2.4, 0.08), 0xc04dff, [0, 2.6, -0.5]),
+    part(oct(0.22), 0xff6ad5, [0, 5.7, 0]),
+  ]);
+}
+export function graveGeo() {
+  return merge([
+    part(box(0.75, 1.0, 0.18), 0x7a7088, [0, 0.5, 0], [0, 0, 0.05]),
+    part(cyl(0.375, 0.375, 0.18, 8, ), 0x7a7088, [0, 1.0, 0], [Math.PI / 2, 0, 0]),
+    part(box(0.9, 0.12, 1.3), 0x5a5a4a, [0, 0.06, 0.55]),
+  ]);
+}
+export function powerShrineGeo() {
+  // Steinkreis mit vier Runensteinen
+  const parts = [part(cyl(3.1, 3.2, 0.15, 16), 0x4a4258, [0, 0.07, 0])];
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+    parts.push(part(box(0.5, 1.6, 0.35), 0x5a526c, [Math.sin(a) * 3.0, 0.8, Math.cos(a) * 3.0], [0, a, 0.08]));
+    parts.push(part(box(0.1, 0.8, 0.05), 0x7fe8ff, [Math.sin(a) * 2.8, 0.9, Math.cos(a) * 2.8], [0, a, 0.08]));
+  }
+  return merge(parts);
+}
+
 // ---- Projektile & Pickups ----
+export const buffGeo = (c: number) => merge([part(ico(0.32, 1), c), part(oct(0.5), 0xffffff, [0, 0, 0], [0, 0, 0], [0.35, 1.3, 0.35])]);
 export function magnetGeo() {
   const arc = new THREE.TorusGeometry(0.32, 0.12, 6, 10, PI);
   return merge([
@@ -278,7 +390,7 @@ export function treeGeo(leaf: number, leaf2: number) {
     part(ico(0.7), leaf2, [-0.55, 2.0, -0.3]),
   ]);
 }
-export const rockGeo = () => merge([part(new THREE.DodecahedronGeometry(1), 0xd6cce8, [0, 0.3, 0], [0, 0, 0], [1, 0.7, 1]), part(new THREE.DodecahedronGeometry(0.5), 0xc8bedc, [0.8, 0.1, 0.3])]);
+export const rockGeo = () => merge([part(new THREE.DodecahedronGeometry(1), 0x8e86a4, [0, 0.3, 0], [0, 0, 0], [1, 0.7, 1]), part(new THREE.DodecahedronGeometry(0.5), 0x7c7494, [0.8, 0.1, 0.3])]);
 export const flowerGeo = (c: number) => merge([part(cyl(0.03, 0.03, 0.4, 3), 0x8fcf8f, [0, 0.2, 0]), part(ico(0.14), c, [0, 0.45, 0])]);
 export const crystalGeo = () => new THREE.OctahedronGeometry(1).scale(0.5, 1.6, 0.5);
 

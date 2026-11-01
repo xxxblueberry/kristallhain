@@ -5,16 +5,17 @@ import { Terrain, HALF, WORLD } from './terrain';
 import { Grid } from './grid';
 import {
   ENEMIES, PASSIVES, ITEMS, RARITIES, MAX_ENEMIES, MAX_PROJ, MAX_PICK, MAX_TELE, BOSSES, FINAL_BOSS, ELITE, W_RELICS,
-  E_BEETLE, E_WOLF, E_SHAMAN, E_WISP, E_GOLEM, E_HYDRA, E_TITAN, E_KING, E_WITCH, W_SPEAR, baseStats, type Stats,
+  E_BEETLE, E_WOLF, E_SHAMAN, E_WISP, E_GOLEM, E_HYDRA, E_TITAN, E_KING, E_WITCH, E_QUEEN, E_DARK, W_SPEAR, baseStats, type Stats,
   I_THORNS, I_POPBERRY, I_VAMPIRE, I_FROST, I_SOULJAR, I_BUBBLE, I_THUNDERBOOTS, I_BIGHEART, I_PHOENIX, I_STARFALL,
+  I_STORMRING, I_BLOODCRYSTAL, I_HUNTER, I_MIDAS, I_SKULL, BUFFS,
 } from './data';
 import { updateWeapons, newWeapon, type WeaponState } from './weapons';
-import { genOffers, applyOffer, offerValid, type Offer } from './upgrades';
+import { genOffers, applyOffer, offerValid, offerInfo, type Offer } from './upgrades';
 
 // Ereignisse für Rendering/Audio: [typ, a, b, c, d, e, f, g]
 export const EV_HIT = 1, EV_KILL = 2, EV_XP = 3, EV_HURT = 4, EV_LEVEL = 5, EV_BOOM = 6, EV_SHOOT = 7,
   EV_JUMP = 8, EV_LAND = 9, EV_CHAIN = 10, EV_NOVA = 11, EV_GOLD = 12, EV_CHEST = 13, EV_HEAL = 14, EV_SHIELD = 15, EV_REVIVE = 16,
-  EV_MAGNET = 17, EV_SLASH = 18, EV_BLINK = 19;
+  EV_MAGNET = 17, EV_SLASH = 18, EV_BLINK = 19, EV_BUFF = 20, EV_POWER = 21;
 export const EV_STRIDE = 8;
 const MAX_EV = 6000;
 
@@ -24,7 +25,8 @@ export const B_DEATH = 0, B_ENEMY = 1, B_METEOR = 2, B_PLAYER = 3, B_STAR = 4;
 export const P_SPEAR = 0, P_SHARD = 1, P_METEOR = 2, P_BULLET = 3, P_STAR = 4;
 export const T_CIRCLE = 0, T_LINE = 1;
 export const SHRINE_TIME = 0.5;
-export const K_XP = 0, K_GOLD = 1, K_HEART = 2, K_MAGNET = 3;
+export const K_XP = 0, K_GOLD = 1, K_HEART = 2, K_MAGNET = 3, K_BUFF = 4; // K_BUFF + 0..2 = Powerups
+export const POWER_TIME = 2.5; // so lange im Machtschrein stehen
 export { W_RELICS };
 
 // Schwierigkeit über die Zeit (t in Sekunden)
@@ -32,11 +34,14 @@ const hpScale = (t: number) => 1 + (t / 60) * 0.45 + Math.pow(t / 60, 2) * 0.045
 const dmgScale = (t: number) => 1 + (t / 60) * 0.12;
 const speedScale = (t: number) => 1 + Math.min(0.3, t / 2400);
 
-export const PROP_TREE_PINK = 0, PROP_TREE_MINT = 1, PROP_ROCK = 2;
+export const PROP_TREE_PINK = 0, PROP_TREE_MINT = 1, PROP_ROCK = 2, PROP_DEADTREE = 3, PROP_PILLAR = 4,
+  PROP_CRYSTAL = 5, PROP_OBELISK = 6, PROP_GRAVE = 7;
+export const PROP_KINDS = 8;
 export interface Prop { kind: number; x: number; y: number; z: number; s: number; rot: number; r: number; h: number }
 
 export type Mode = 'run' | 'levelup' | 'shop' | 'chest' | 'dead' | 'won';
-export interface Interactable { kind: 0 | 1; x: number; y: number; z: number; used: boolean; hold: number }
+// kind: 0 Händler-Schrein, 1 Truhe, 2 Machtschrein (dauerhafter Werte-Bonus)
+export interface Interactable { kind: 0 | 1 | 2; x: number; y: number; z: number; used: boolean; hold: number }
 
 const TAU = Math.PI * 2;
 const LIM = HALF - 3;
@@ -54,7 +59,7 @@ export class Sim {
 
   // ---- Held ----
   hx = 0; hy = 0; hz = 0; phx = 0; phy = 0; phz = 0;
-  vy = 0; airborne = false; coyote = 0; jumpBuf = 0; jumpsLeft = 0; jumped = false;
+  vy = 0; airborne = false; coyote = 0; jumpBuf = 0; jumpsLeft = 0; jumped = false; fallTop = 0;
   fx = 0; fz = 1; moving = false;
   hp = 100; iframe = 0;
   level = 1; xp = 0; xpNext = xpFor(1); pendingLevels = 0;
@@ -66,6 +71,8 @@ export class Sim {
   items = new Uint8Array(ITEMS.length);
   private bonusHp = 0;
   shieldT = 0; // 0 = Schutzblase bereit
+  buffT = new Float32Array(BUFFS.length); // Restzeit je Powerup
+  private bloodAcc = 0;
   private starT = 3;
   pistolAim = 0;
   weaponDamage = new Float64Array(16);
@@ -132,6 +139,7 @@ export class Sim {
   private readonly qP = new Int32Array(256);
   private cx = 0; private cz = 0;
   private pendingBooms: number[] = [];
+  private pendingZaps: number[] = [];
 
   private spawnAcc = 0;
   private nextSwarm = 95;
@@ -213,7 +221,7 @@ export class Sim {
   private canEnter(x: number, z: number, dist: number): boolean {
     const g = this.terrain.height(x, z);
     if (this.airborne) return g <= this.hy + 0.15;
-    return g <= this.hy + 0.02 + dist * 0.9; // steiler als ~42° = Wand
+    return g <= this.hy + 0.02 + dist * 0.6; // steiler als ~31° = Wand (Terrassen nur per Sprung)
   }
 
   // schiebt einen Kreis aus Bäumen/Felsen heraus; Ergebnis in cx/cz
@@ -235,6 +243,7 @@ export class Sim {
     this.phx = this.hx; this.phy = this.hy; this.phz = this.hz;
     if (this.iframe > 0) this.iframe -= dt;
     if (this.shieldT > 0) this.shieldT -= dt;
+    for (let b = 0; b < this.buffT.length; b++) if (this.buffT[b] > 0) this.buffT[b] -= dt;
     if (s.regen > 0) this.hp = Math.min(s.maxHp, this.hp + s.regen * dt);
 
     let mx = this.inX, mz = this.inZ;
@@ -242,7 +251,7 @@ export class Sim {
     if (ml > 1) { mx /= ml; mz /= ml; }
     this.moving = ml > 0.1;
     if (this.moving) { const l = Math.hypot(mx, mz); this.fx = mx / l; this.fz = mz / l; }
-    const sp = 7.5 * s.speed * (this.airborne ? s.airSpeed : 1) * dt;
+    const sp = 7.5 * s.speed * (this.airborne ? s.airSpeed : 1) * (this.buffT[1] > 0 ? 1.45 : 1) * dt;
     const nx = clampW(this.hx + mx * sp), nz = clampW(this.hz + mz * sp);
     if (this.canEnter(nx, this.hz, Math.abs(nx - this.hx))) this.hx = nx;
     if (this.canEnter(this.hx, nz, Math.abs(nz - this.hz))) this.hz = nz;
@@ -266,7 +275,16 @@ export class Sim {
     if (this.airborne) {
       this.vy -= 28 * dt;
       this.hy += this.vy * dt;
+      if (this.hy > this.fallTop) this.fallTop = this.hy;
       if (this.hy <= g) {
+        // Fallschaden ab ~4,5 m Sturzhöhe – tut weh, tötet aber nie
+        const drop = this.fallTop - g;
+        if (drop > 4.5 && this.mode === 'run') {
+          const dmg = Math.round((drop - 4.5) * 3.5 + 3);
+          this.hp = Math.max(1, this.hp - dmg);
+          this.emit(EV_HURT, this.hx, g, this.hz, dmg);
+          this.hitStop = Math.max(this.hitStop, 0.05);
+        }
         if (this.vy < -4) {
           this.emit(EV_LAND, this.hx, g, this.hz, -this.vy);
           const n = this.items[I_THUNDERBOOTS];
@@ -277,13 +295,15 @@ export class Sim {
         }
         this.hy = g; this.vy = 0; this.airborne = false; this.jumped = false;
       }
-    } else if (g < this.hy - 0.5) {
-      this.airborne = true; this.vy = 0; // Kante hinunter
+    } else if (g < this.hy - 0.5 || this.hy - g > 0.05 + Math.hypot(this.hx - this.phx, this.hz - this.phz) * 1.1) {
+      // Kante oder steiler Abhang: nicht runterrutschen, sondern fallen
+      this.airborne = true; this.vy = 0; this.fallTop = this.hy;
     } else this.hy = g;
+    if (!this.airborne) this.fallTop = this.hy;
   }
 
   hurt(dmg: number) {
-    if (this.iframe > 0 || this.mode !== 'run' || this.winT > 0) return;
+    if (this.iframe > 0 || this.mode !== 'run' || this.winT > 0 || this.buffT[2] > 0) return;
     const nb = this.items[I_BUBBLE];
     if (nb && this.shieldT <= 0) {
       this.shieldT = 12 - 2 * (nb - 1);
@@ -336,6 +356,16 @@ export class Sim {
       this.emit(EV_BOOM, x, this.terrain.height(x, z), z, 3.2, B_METEOR);
     }
     this.pendingBooms.length = 0;
+    // Sturmring: Krit-Blitze zum nächsten Gegner
+    for (let k = 0; k + 3 < this.pendingZaps.length && k < 160; k += 4) {
+      const [x, y, z, dmg] = this.pendingZaps.slice(k, k + 4);
+      const m = this.nearest(x, z, 7, 2, this.qC);
+      const j = m > 1 ? this.qC[1] : -1; // [0] ist meist der getroffene Gegner selbst
+      if (j < 0) continue;
+      this.emit(EV_CHAIN, x, y, z, this.ex[j], this.ey[j] + 1, this.ez[j]);
+      this.damageEnemy(j, dmg, x, z, 2, W_RELICS);
+    }
+    this.pendingZaps.length = 0;
   }
 
   private updateRelics(dt: number) {
@@ -356,45 +386,58 @@ export class Sim {
   // ================= Welt aufbauen =================
   private placeInteractables() {
     const T = this.terrain;
-    const put = (kind: 0 | 1, minD: number, maxD: number) => {
+    const put = (kind: 0 | 1 | 2, minD: number, maxD: number) => {
       for (let tries = 0; tries < 60; tries++) {
         const a = this.r() * TAU, d = minD + this.r() * (maxD - minD);
         const x = Math.sin(a) * d, z = Math.cos(a) * d;
         if (Math.abs(x) > LIM - 8 || Math.abs(z) > LIM - 8) continue;
-        if (this.interact.some((o) => Math.hypot(o.x - x, o.z - z) < (kind === 0 ? 30 : 10))) continue;
+        if (this.interact.some((o) => Math.hypot(o.x - x, o.z - z) < (kind === 1 ? 10 : 26))) continue;
         const y = T.height(x, z);
         if (Math.abs(T.height(x + 1.5, z) - y) > 0.35 || Math.abs(T.height(x, z + 1.5) - y) > 0.35) continue;
         this.interact.push({ kind, x, y, z, used: false, hold: 0 });
         return;
       }
     };
-    put(0, 22, 30); put(1, 12, 18); put(1, 14, 22);
+    put(0, 22, 30); put(1, 12, 18); put(1, 14, 22); put(2, 26, 40);
     for (let i = 0; i < 9; i++) put(0, 45, LIM);
+    for (let i = 0; i < 13; i++) put(2, 40, LIM);
     for (let i = 0; i < 34; i++) put(1, 28, LIM);
   }
 
   private placeProps(seed: number) {
     const rng = new Rng(seed + 101), T = this.terrain;
-    const add = (kind: number, count: number, minS: number, maxS: number) => {
+    // Kollisionsradius r und Höhe h (drüberspringbar, wenn niedrig) je Art, bezogen auf Skalierung 1
+    const SHAPE: Record<number, [number, number]> = {
+      [PROP_TREE_PINK]: [0.55, 99], [PROP_TREE_MINT]: [0.55, 99], [PROP_ROCK]: [1.0, 0.9], [PROP_DEADTREE]: [0.45, 99],
+      [PROP_PILLAR]: [0.75, 99], [PROP_CRYSTAL]: [1.1, 99], [PROP_OBELISK]: [0.9, 99], [PROP_GRAVE]: [0.45, 1.0],
+    };
+    // biome: [min, max] des Biom-Werts, in dem die Art vorkommt
+    const add = (kind: number, count: number, minS: number, maxS: number, bMin = 0, bMax = 1) => {
       let k = 0;
-      for (let tries = 0; tries < count * 6 && k < count; tries++) {
+      for (let tries = 0; tries < count * 10 && k < count; tries++) {
         const x = rng.range(-HALF + 6, HALF - 6), z = rng.range(-HALF + 6, HALF - 6);
         if (x * x + z * z < 14 * 14) continue;
+        const b = T.biome(x, z);
+        if (b < bMin || b > bMax) continue;
         const y = T.height(x, z);
         if (Math.abs(T.height(x + 1, z) - y) > 0.5 || Math.abs(T.height(x, z + 1) - y) > 0.5) continue;
         if (this.interact.some((o) => Math.abs(o.x - x) < 5 && Math.abs(o.z - z) < 5)) continue;
         const s = rng.range(minS, maxS);
-        const p: Prop = kind === PROP_ROCK
-          ? { kind, x, y, z, s, rot: rng.next() * TAU, r: 1.0 * s, h: 0.9 * s }
-          : { kind, x, y, z, s, rot: rng.next() * TAU, r: 0.55 * s, h: 99 };
+        const [r, h] = SHAPE[kind];
         this.propGrid.insert(this.props.length, x, z);
-        this.props.push(p);
+        this.props.push({ kind, x, y, z, s, rot: rng.next() * TAU, r: r * s, h: h * s });
         k++;
       }
     };
-    add(PROP_TREE_PINK, 150, 0.8, 1.5);
-    add(PROP_TREE_MINT, 150, 0.8, 1.6);
-    add(PROP_ROCK, 170, 0.5, 1.8);
+    // Hain (Mitte des Biom-Bereichs): Bäume; Totholz (niedrig): kahle Bäume & Gräber; Kristallfeld (hoch): Kristalle & Obelisken
+    add(PROP_TREE_PINK, 110, 0.8, 1.5, 0.3, 0.7);
+    add(PROP_TREE_MINT, 110, 0.8, 1.6, 0.3, 0.7);
+    add(PROP_DEADTREE, 120, 0.9, 1.6, 0, 0.42);
+    add(PROP_GRAVE, 70, 0.8, 1.2, 0, 0.4);
+    add(PROP_CRYSTAL, 80, 0.8, 1.8, 0.58, 1);
+    add(PROP_OBELISK, 22, 1, 1.4, 0.6, 1);
+    add(PROP_PILLAR, 70, 0.8, 1.3); // Ruinen überall verstreut
+    add(PROP_ROCK, 150, 0.5, 1.8);
   }
 
   // ================= Spawns =================
@@ -669,6 +712,75 @@ export class Sim {
             }
             break;
           }
+          case E_QUEEN: {
+            // Sternförmige Netzlinien um sich (rotierend), ruft Käfer; wütend zusätzlich Kreise am Helden
+            const enraged = this.ehp[i] < this.emax[i] * 0.5;
+            if (dist < 8) spd *= 0.4;
+            if (this.etimer[i] > 0) spd = 0;
+            if (this.ecd[i] <= 0) {
+              const n = enraged ? 8 : 6;
+              this.eaux[i] += 0.4;
+              for (let k = 0; k < n; k++) this.addTele(T_LINE, this.ex[i], this.ez[i], 2, 17, this.eaux[i] + (k / n) * TAU, 1.2, edmg);
+              if (enraged) for (let k = 0; k < 3; k++) {
+                const a = this.r() * TAU, r = this.r() * 5;
+                this.addTele(T_CIRCLE, hx + Math.sin(a) * r, hz + Math.cos(a) * r, 2.6, 0, 0, 1.3, edmg);
+              }
+              this.ecd[i] = enraged ? 3.2 : 4.4;
+              this.etimer[i] = 1;
+            }
+            if (this.ecd2[i] <= 0) {
+              this.ecd2[i] = 7;
+              for (let k = 0; k < 6; k++) {
+                const a = (k / 6) * TAU;
+                this.spawnEnemy(E_BEETLE, this.ex[i] + Math.sin(a) * 4, this.ez[i] + Math.cos(a) * 4);
+              }
+            }
+            break;
+          }
+          case E_DARK: {
+            // Endboss in 3 Phasen. eState 3 = Sprungangriff (landet auf eaux/eaux2)
+            const frac = this.ehp[i] / this.emax[i];
+            const phase = frac > 0.66 ? 1 : frac > 0.33 ? 2 : 3;
+            if (this.eState[i] === 3) {
+              spd = 0;
+              if (this.etimer[i] <= 0) {
+                this.ex[i] = this.epx[i] = clampW(this.eaux[i]);
+                this.ez[i] = this.epz[i] = clampW(this.eaux2[i]);
+                this.emit(EV_BOOM, this.ex[i], T.height(this.ex[i], this.ez[i]), this.ez[i], 5, B_DEATH);
+                this.eState[i] = 0;
+              }
+              break;
+            }
+            if (this.etimer[i] > 0) spd = 0;
+            if (this.ecd[i] <= 0) {
+              const pick = (this.ecd2[i] = (this.ecd2[i] + 1) % 3);
+              if (pick === 0) {
+                // Klingenstern: 8 (später 12) Linien
+                const n = phase === 1 ? 8 : 12, a0 = this.r() * TAU;
+                for (let k = 0; k < n; k++) this.addTele(T_LINE, this.ex[i], this.ez[i], 2.4, 24, a0 + (k / n) * TAU, 1.2, edmg);
+                this.etimer[i] = 1.2;
+              } else if (pick === 1) {
+                // Sprungangriff auf die Position des Helden
+                this.addTele(T_CIRCLE, hx, hz, 4.8, 0, 0, 1.1, edmg * 1.3);
+                this.eState[i] = 3; this.etimer[i] = 1.1; this.eaux[i] = hx; this.eaux2[i] = hz;
+                this.emit(EV_BLINK, this.ex[i], this.ey[i] + 2, this.ez[i]);
+              } else if (phase >= 3) {
+                // Schockwellen: drei wachsende Kreise nacheinander – rauslaufen oder im Takt springen
+                for (let k = 0; k < 3; k++) this.addTele(T_CIRCLE, this.ex[i], this.ez[i], 5 + k * 4.5, 0, 0, 1.0 + k * 0.45, edmg);
+                this.etimer[i] = 1.2;
+              } else {
+                // Schattenregen um den Helden
+                for (let k = 0; k < (phase === 1 ? 5 : 8); k++) {
+                  const a = this.r() * TAU, r = k === 0 ? 0 : 2 + this.r() * 7;
+                  this.addTele(T_CIRCLE, hx + Math.sin(a) * r, hz + Math.cos(a) * r, 2.8, 0, 0, 1.2 + k * 0.1, edmg * 0.8);
+                }
+              }
+              this.ecd[i] = phase === 1 ? 3.4 : phase === 2 ? 2.8 : 2.1;
+            }
+            // ab Phase 2 ruft er regelmäßig Elites
+            if (phase >= 2 && this.time % 14 < dt) this.spawnEnemy(this.pickType(), this.ex[i] + 5, this.ez[i], true);
+            break;
+          }
         }
       }
 
@@ -726,8 +838,23 @@ export class Sim {
   damageEnemy(i: number, base: number, sx: number, sz: number, kb: number, w: number) {
     if (!this.eAlive[i]) return;
     let dmg = base, crit = 0;
-    if (this.r() < this.stats.crit) { dmg *= this.stats.critDmg; crit = 1; }
+    if (this.buffT[0] > 0) dmg *= 2; // Powerup "Raserei"
+    const big = this.eElite[i] || ENEMIES[this.eType[i]].boss;
+    if (big && this.items[I_HUNTER]) dmg *= 1 + 0.4 * this.items[I_HUNTER];
+    if (this.items[I_SKULL]) dmg *= 1 + Math.min(0.5, (this.kills / 100) * 0.02);
+    if (this.r() < this.stats.crit) {
+      dmg *= this.stats.critDmg; crit = 1;
+      const nz = this.items[I_STORMRING];
+      if (nz && w !== W_RELICS && this.r() < 0.3 && this.pendingZaps.length < 200) {
+        this.pendingZaps.push(this.ex[i], this.ey[i] + 1, this.ez[i], 20 * nz * this.stats.dmg);
+      }
+    }
     dmg = Math.max(1, Math.round(dmg * (0.9 + this.r() * 0.2)));
+    const nbc = this.items[I_BLOODCRYSTAL];
+    if (nbc) {
+      this.bloodAcc += Math.min(dmg, this.ehp[i]) * nbc;
+      if (this.bloodAcc >= 250) { const hh = Math.floor(this.bloodAcc / 250); this.bloodAcc -= hh * 250; this.hp = Math.min(this.stats.maxHp, this.hp + hh); }
+    }
     this.weaponDamage[w] += Math.min(dmg, this.ehp[i]);
     this.ehp[i] -= dmg;
     this.eflash[i] = 1;
@@ -767,11 +894,13 @@ export class Sim {
       for (let k = 0; k < 8; k++) this.spawnPickup(K_GOLD, x, z, 1, 2.5);
       this.spawnPickup(K_HEART, x, z, 1);
       if (this.r() < 0.2) this.spawnPickup(K_MAGNET, x, z, 1);
+      if (this.r() < 0.3) this.spawnPickup(K_BUFF + Math.floor(this.r() * BUFFS.length), x, z, 1);
     } else {
       if (this.r() < d.gold * (1 + this.stats.luck)) this.spawnPickup(K_GOLD, x, z, 1);
       if (this.r() < this.stats.heartChance) this.spawnPickup(K_HEART, x, z, 1);
-      // Magnet: ganz selten
+      // Magnet: ganz selten; Powerups selten
       if (this.r() < 0.0012 * (1 + this.stats.luck)) this.spawnPickup(K_MAGNET, x, z, 1);
+      if (this.r() < 0.0035 * (1 + this.stats.luck)) this.spawnPickup(K_BUFF + Math.floor(this.r() * BUFFS.length), x, z, 1);
     }
     // Relikt-Effekte beim Kill
     const np = this.items[I_POPBERRY];
@@ -977,6 +1106,12 @@ export class Sim {
         this.emit(EV_GOLD, this.kx[i], this.ky[i], this.kz[i], this.kval[i]);
       } else if (kind === K_HEART) {
         this.heal(this.stats.heartHeal);
+      } else if (kind >= K_BUFF) {
+        const b = kind - K_BUFF;
+        this.buffT[b] = BUFFS[b].dur;
+        this.emit(EV_BUFF, hx, this.hy, hz, b);
+        this.toast = `${BUFFS[b].icon} ${BUFFS[b].name}! ${BUFFS[b].info}`;
+        this.toastT = 2.5;
       } else {
         // Magnet: alle XP-Kugeln und Münzen der Karte fliegen zum Helden
         for (let k = 0; k < this.kHigh; k++) if (this.kAlive[k] && this.kKind[k] <= K_GOLD) this.kMag[k] = 1;
@@ -988,18 +1123,42 @@ export class Sim {
   }
 
   // ================= Schreine & Truhen =================
+  currentChestCost(): number {
+    return Math.round(this.chestCost * (this.items[I_MIDAS] ? 0.7 : 1));
+  }
+
   private updateInteract(dt: number) {
     this.interactProgress = 0;
     this.interactLabel = '';
     for (const it of this.interact) {
       if (it.used) continue;
       const d = Math.hypot(this.hx - it.x, this.hz - it.z);
-      if (d > 2.4 || Math.abs(this.hy - it.y) > 1.6) { it.hold = 0; continue; }
+      const reach = it.kind === 2 ? 3.4 : 2.4;
+      if (d > reach || Math.abs(this.hy - it.y) > 1.6) {
+        // Machtschrein entlädt sich langsam, wenn man rausgeht
+        it.hold = it.kind === 2 ? Math.max(0, it.hold - dt * 0.5) : 0;
+        continue;
+      }
+      if (it.kind === 2) {
+        it.hold += dt;
+        this.interactProgress = Math.min(1, it.hold / POWER_TIME);
+        this.interactLabel = 'Machtschrein lädt … bleib im Kreis';
+        if (it.hold < POWER_TIME) continue;
+        it.used = true;
+        const o = genOffers(this, 'shrine', 1)[0];
+        applyOffer(this, o);
+        const info = offerInfo(o);
+        this.toast = `✦ Macht: ${info.icon} ${info.title} (${info.tag}) – ${info.desc}`;
+        this.toastT = 3;
+        this.emit(EV_POWER, it.x, it.y, it.z, o.rarity);
+        continue;
+      }
       if (it.kind === 1) {
         // Truhe: sofort öffnen, wenn genug Gold da ist
-        if (this.gold < this.chestCost) { this.interactLabel = `Truhe: ${this.chestCost} Gold nötig`; continue; }
+        const cost = this.currentChestCost();
+        if (this.gold < cost) { this.interactLabel = `Truhe: ${cost} Gold nötig`; continue; }
         it.used = true;
-        this.gold -= this.chestCost;
+        this.gold -= cost;
         this.chestCost = Math.round(this.chestCost * 1.35 + 3);
         this.mode = 'chest';
         this.chestOffers = genOffers(this, 'chest', 3);

@@ -18,8 +18,9 @@ export const bladeLayout = (level: number, area: number) => ({ count: 1 + level,
 
 export function updateWeapons(s: Sim, dt: number) {
   const st = s.stats;
+  const haste = s.buffT[1] > 0 ? 1.4 : 1; // Powerup "Sturmschritt"
   for (const w of s.weapons) {
-    w.cd -= dt;
+    w.cd -= dt * haste;
     const L = w.level;
     switch (w.id) {
       case W_SPEAR: {

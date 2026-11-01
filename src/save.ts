@@ -7,6 +7,7 @@ export interface Settings {
   skin: string;
   textures: boolean;
   music: number;
+  pitch: number;
   quality: 'hoch' | 'niedrig';
 }
 
@@ -26,7 +27,7 @@ const defaultQuality = (): 'hoch' | 'niedrig' =>
 
 const defaults = (): SaveData => ({
   bestTime: 0, bestKills: 0, wins: 0, runs: 0,
-  settings: { volume: 0.7, shake: true, numbers: true, zoom: 20, skin: 'assassin', textures: true, music: 0.6, quality: defaultQuality() },
+  settings: { volume: 0.7, shake: true, numbers: true, zoom: 20, skin: 'assassin', textures: true, music: 0.6, pitch: 0.95, quality: defaultQuality() },
 });
 
 export function loadSave(): SaveData {

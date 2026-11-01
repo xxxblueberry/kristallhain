@@ -7,14 +7,17 @@ export const MAX_PICK = 2500;
 export const MAX_TELE = 160;
 export const MAX_SLOTS = 6;
 // Boss-Zeitplan (Sekunden); der letzte ist der Endboss
-export const E_BEETLE = 0, E_WOLF = 1, E_SHAMAN = 2, E_WISP = 3, E_GOLEM = 4, E_HYDRA = 5, E_TITAN = 6, E_KING = 7, E_WITCH = 8;
+export const E_BEETLE = 0, E_WOLF = 1, E_SHAMAN = 2, E_WISP = 3, E_GOLEM = 4, E_HYDRA = 5, E_TITAN = 6, E_KING = 7, E_WITCH = 8,
+  E_QUEEN = 9, E_DARK = 10;
 export const BOSSES = [
-  { t: 150, type: E_KING, text: 'Der Käferkönig stampft heran!' },
-  { t: 300, type: E_HYDRA, text: 'Die Kristall-Hydra erwacht!' },
+  { t: 120, type: E_KING, text: 'Der Käferkönig stampft heran!' },
+  { t: 240, type: E_HYDRA, text: 'Die Kristall-Hydra erwacht!' },
+  { t: 360, type: E_QUEEN, text: 'Die Kristallspinnen-Königin lauert!' },
   { t: 480, type: E_WITCH, text: 'Die Sturmhexe zieht auf!' },
-  { t: 660, type: E_TITAN, text: 'Der Moos-Titan erhebt sich!' },
+  { t: 600, type: E_TITAN, text: 'Der Moos-Titan erhebt sich!' },
+  { t: 750, type: E_DARK, text: 'Der Schattenfürst erscheint – das Ende naht!' },
 ];
-export const FINAL_BOSS = E_TITAN;
+export const FINAL_BOSS = E_DARK;
 
 // Elites: verstärkte Normalgegner mit goldenem Glanz und besserer Beute
 export const ELITE = { start: 110, every: 38, minEvery: 18, hp: 7, dmg: 1.5, scale: 1.5 };
@@ -33,6 +36,7 @@ export const RARITY_WEIGHTS = {
   level: [60, 25, 10, 4, 1],
   chest: [0, 50, 30, 14, 6],
   shop: [40, 30, 18, 9, 3],
+  shrine: [25, 35, 24, 11, 5],
 };
 
 // ---------- Gegner ----------
@@ -61,6 +65,8 @@ export const ENEMIES: EnemyDef[] = [
   { name: 'Moos-Titan', hp: 7000, speed: 1.7, dmg: 25, radius: 3.8, xp: 0, gold: 0, color: 0x9fcf8f, flying: false, boss: true, tall: 8.5 },
   { name: 'Käferkönig', hp: 1400, speed: 3.0, dmg: 16, radius: 2.2, xp: 60, gold: 25, color: 0x5fc8c0, flying: false, boss: true, tall: 3.6 },
   { name: 'Sturmhexe', hp: 5000, speed: 3.4, dmg: 18, radius: 1.8, xp: 160, gold: 50, color: 0xc6a8ff, flying: true, boss: true, tall: 4.5 },
+  { name: 'Kristallspinnen-Königin', hp: 4200, speed: 2.8, dmg: 18, radius: 2.8, xp: 140, gold: 45, color: 0x9a7ad8, flying: false, boss: true, tall: 4 },
+  { name: 'Der Schattenfürst', hp: 32000, speed: 2.6, dmg: 30, radius: 2.6, xp: 0, gold: 0, color: 0x6a3a9a, flying: false, boss: true, tall: 8 },
 ];
 
 // ---------- Waffen ----------
@@ -139,12 +145,15 @@ export const PASSIVES: PassiveDef[] = [
   { name: 'Weisheit', icon: '📖', max: 5, info: (m) => `+${pct(0.1 * m)} Erfahrung`, apply: (s, m) => (s.xpMul += 0.1 * m) },
   { name: 'Sprungkraft', icon: '🦘', max: 4, info: (m) => `+${pct(0.1 * m)} Sprunghöhe & -weite`, apply: (s, m) => { s.jump += 0.1 * m; s.airSpeed += 0.08 * m; } },
   { name: 'Mehrfachwurf', icon: '✳️', max: 2, minRarity: 2, info: () => '+1 Projektil für alle Waffen', apply: (s) => (s.extraProj += 1) },
+  { name: 'Präzision', icon: '🎯', max: 5, info: (m) => `+${pct(0.2 * m)} Krit-Schaden`, apply: (s, m) => (s.critDmg += 0.2 * m) },
+  { name: 'Sammler', icon: '🪙', max: 5, info: (m) => `+${pct(0.2 * m)} Gold`, apply: (s, m) => (s.goldMul += 0.2 * m) },
 ];
 
 // ---------- Relikte (aus Truhen, feste Seltenheit, echte Effekte) ----------
 export const I_HEARTBERRY = 0, I_GOLDTOOTH = 1, I_SPRINGS = 2, I_THORNS = 3, I_FEATHERSHOES = 4, I_POPBERRY = 5,
   I_CRYSTALHEART = 6, I_LUCKYCAT = 7, I_VAMPIRE = 8, I_FROST = 9, I_SOULJAR = 10, I_BUBBLE = 11, I_THUNDERBOOTS = 12,
-  I_BIGHEART = 13, I_WRATH = 14, I_PHOENIX = 15, I_STARFALL = 16;
+  I_BIGHEART = 13, I_WRATH = 14, I_PHOENIX = 15, I_STARFALL = 16,
+  I_SPRINT = 17, I_STORMRING = 18, I_BLOODCRYSTAL = 19, I_HUNTER = 20, I_MIDAS = 21, I_TIMEGLASS = 22, I_SKULL = 23;
 
 export interface ItemDef {
   name: string;
@@ -173,4 +182,18 @@ export const ITEMS: ItemDef[] = [
   { name: 'Zornklinge', icon: '🗡️', rarity: 4, max: 2, info: '+100% Krit-Schaden, +10% Krit', apply: (s) => { s.critDmg += 1; s.crit += 0.1; } },
   { name: 'Phönixfeder', icon: '🔥', rarity: 4, max: 2, info: 'Einmal wiederbeleben mit halber HP' },
   { name: 'Sternenregen', icon: '🌠', rarity: 4, max: 3, info: 'Alle 5 s regnen Sterne auf Gegner' },
+  { name: 'Sprintband', icon: '🎽', rarity: 0, max: 3, info: '+12% Laufgeschwindigkeit', apply: (s) => (s.speed += 0.12) },
+  { name: 'Sturmring', icon: '💍', rarity: 1, max: 3, info: 'Krits lösen mit 30% Chance einen Blitz aus' },
+  { name: 'Blutkristall', icon: '🩸', rarity: 2, max: 3, info: 'Heilt 1 HP pro 250 verursachtem Schaden' },
+  { name: 'Jägermal', icon: '🏹', rarity: 2, max: 3, info: '+40% Schaden gegen Elites und Bosse' },
+  { name: 'Midas-Krone', icon: '👑', rarity: 3, max: 1, info: 'Truhen kosten 30% weniger' },
+  { name: 'Zeitsanduhr', icon: '⏳', rarity: 4, max: 2, info: '-15% Abklingzeit aller Waffen', apply: (s) => (s.cd *= 0.85) },
+  { name: 'Totenkopf-Amulett', icon: '💀', rarity: 4, max: 1, info: '+2% Schaden je 100 Kills (max. +50%)' },
+];
+
+// ---------- Powerups (zeitlich begrenzt, liegen auf dem Boden) ----------
+export const BUFFS = [
+  { name: 'Raserei', icon: '🔥', info: 'Doppelter Schaden', dur: 10, color: 0xff5a4a },
+  { name: 'Sturmschritt', icon: '⚡', info: 'Schneller laufen & angreifen', dur: 10, color: 0xffd84a },
+  { name: 'Kristallhaut', icon: '🛡️', info: 'Unverwundbar', dur: 6, color: 0x7fe8ff },
 ];

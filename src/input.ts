@@ -12,9 +12,10 @@ export class Input {
   private pauseQ = false;
   private rotAcc = 0;
   private zoomAcc = 1; // Faktor, multiplikativ gesammelt
+  private pitchAcc = 0; // Kamera neigen (Radiant)
   private joy = { id: -1, ox: 0, oy: 0, x: 0, y: 0 };
-  private camTouch = { id: -1, lx: 0 };
-  private mouse = { down: false, lx: 0 };
+  private camTouch = { id: -1, lx: 0, ly: 0 };
+  private mouse = { down: false, lx: 0, ly: 0 };
   private padPrev: boolean[] = [];
   private padNavT = 0;
   readonly isTouch = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
@@ -42,7 +43,7 @@ export class Input {
 
     canvas.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'mouse') {
-        this.mouse.down = true; this.mouse.lx = e.clientX;
+        this.mouse.down = true; this.mouse.lx = e.clientX; this.mouse.ly = e.clientY;
         return;
       }
       if (e.clientX < window.innerWidth * 0.45 && this.joy.id < 0) {
@@ -51,12 +52,16 @@ export class Input {
         this.joyBase.style.left = `${e.clientX}px`; this.joyBase.style.top = `${e.clientY}px`;
         this.joyKnob.style.transform = 'translate(-50%, -50%)';
       } else if (this.camTouch.id < 0) {
-        this.camTouch.id = e.pointerId; this.camTouch.lx = e.clientX;
+        this.camTouch.id = e.pointerId; this.camTouch.lx = e.clientX; this.camTouch.ly = e.clientY;
       }
     });
     window.addEventListener('pointermove', (e) => {
       if (e.pointerType === 'mouse') {
-        if (this.mouse.down) { this.rotAcc -= (e.clientX - this.mouse.lx) * 0.006; this.mouse.lx = e.clientX; }
+        if (this.mouse.down) {
+          this.rotAcc -= (e.clientX - this.mouse.lx) * 0.006;
+          this.pitchAcc += (e.clientY - this.mouse.ly) * 0.004;
+          this.mouse.lx = e.clientX; this.mouse.ly = e.clientY;
+        }
         return;
       }
       if (e.pointerId === this.joy.id) {
@@ -68,7 +73,8 @@ export class Input {
         this.joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
       } else if (e.pointerId === this.camTouch.id) {
         this.rotAcc -= (e.clientX - this.camTouch.lx) * 0.008;
-        this.camTouch.lx = e.clientX;
+        this.pitchAcc += (e.clientY - this.camTouch.ly) * 0.005;
+        this.camTouch.lx = e.clientX; this.camTouch.ly = e.clientY;
       }
     });
     const up = (e: PointerEvent) => {
@@ -90,6 +96,7 @@ export class Input {
       const zin = k.has('Equal') || k.has('NumpadAdd') || k.has('BracketRight');
       const zout = k.has('Minus') || k.has('NumpadSubtract') || k.has('Slash');
       if (zin || zout) this.zoomAcc *= Math.exp(((zout ? 1 : 0) - (zin ? 1 : 0)) * 1.2 * dt);
+      this.pitchAcc += ((k.has('KeyR') ? 1 : 0) - (k.has('KeyF') ? 1 : 0)) * 0.9 * dt;
     }
     mx += this.joy.x; my -= this.joy.y;
 
@@ -114,6 +121,8 @@ export class Input {
       } else {
         mx += ax; my -= ay;
         if (Math.abs(rx) > 0.2) this.rotAcc -= rx * 2.6 * dt;
+        const ry = pad.axes[3] ?? 0;
+        if (Math.abs(ry) > 0.25) this.pitchAcc += ry * 1.0 * dt;
         if (btn(4) || btn(5)) this.zoomAcc *= Math.exp(((btn(5) ? 1 : 0) - (btn(4) ? 1 : 0)) * 1.2 * dt);
         if (edge(0)) this.jumpQ = true;
         if (edge(9)) this.pauseQ = true;
@@ -129,5 +138,6 @@ export class Input {
   consumePause() { const p = this.pauseQ; this.pauseQ = false; return p; }
   consumeRot() { const r = this.rotAcc; this.rotAcc = 0; return r; }
   consumeZoom() { const z = this.zoomAcc; this.zoomAcc = 1; return z; }
+  consumePitch() { const p = this.pitchAcc; this.pitchAcc = 0; return p; }
   requestPause() { this.pauseQ = true; }
 }

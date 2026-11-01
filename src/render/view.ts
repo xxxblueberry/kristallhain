@@ -7,9 +7,9 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import {
   Sim, EV_HIT, EV_KILL, EV_XP, EV_HURT, EV_LEVEL, EV_BOOM, EV_JUMP, EV_LAND, EV_CHAIN, EV_NOVA, EV_GOLD, EV_CHEST,
-  EV_HEAL, EV_SHIELD, EV_REVIVE, EV_SHOOT, EV_SLASH, EV_MAGNET, EV_BLINK, EV_STRIDE, P_SPEAR, P_SHARD, P_BULLET, B_METEOR, B_ENEMY, B_PLAYER, B_STAR,
+  EV_HEAL, EV_SHIELD, EV_REVIVE, EV_SHOOT, EV_SLASH, EV_MAGNET, EV_BLINK, EV_BUFF, EV_POWER, EV_STRIDE, K_BUFF, P_SPEAR, P_SHARD, P_BULLET, B_METEOR, B_ENEMY, B_PLAYER, B_STAR,
 } from '../core/sim';
-import { ENEMIES, MAX_ENEMIES, MAX_PICK, MAX_PROJ, W_BLADES, W_PISTOL, W_KATANA, I_BUBBLE } from '../core/data';
+import { ENEMIES, MAX_ENEMIES, MAX_PICK, MAX_PROJ, W_BLADES, W_PISTOL, W_KATANA, I_BUBBLE, BUFFS, RARITIES } from '../core/data';
 import { bladeLayout } from '../core/weapons';
 import * as M from './models';
 import { World } from './world';
@@ -17,7 +17,7 @@ import { createWanderer, type HeroSkin } from './hero';
 import { Fx, setM } from './fx';
 import { terrainTex } from './world';
 
-const ENEMY_CAP = [1400, 700, 400, 500, 300, 2, 2, 2, 2];
+const ENEMY_CAP = [1400, 700, 400, 500, 300, 2, 2, 2, 2, 2, 2];
 const MAX_BARS = 64;
 
 // Lambert mit Treffer-Blitz pro Instanz (Attribut aFlash): >0 weiß aufblitzen, <0 goldener Elite-Glanz
@@ -110,6 +110,7 @@ export class View {
   private coins: THREE.InstancedMesh;
   private hearts: THREE.InstancedMesh;
   private magnets: THREE.InstancedMesh;
+  private buffMeshes: THREE.InstancedMesh[];
   private katana: THREE.Mesh;
   private katanaT = 1; // 0..1 Fortschritt des Schwungs
   private barBg: THREE.InstancedMesh;
@@ -128,18 +129,19 @@ export class View {
     this.renderer = new THREE.WebGLRenderer({ antialias: !lowQ, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, lowQ ? 1.5 : 2));
     this.renderer.toneMapping = THREE.NeutralToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.0;
     container.appendChild(this.renderer.domElement);
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.5, 400);
-    this.scene.fog = new THREE.Fog(0xf6e2f0, 60, 170);
+    // Dämmerung: violetter Dunst statt Pastell-Rosa
+    this.scene.fog = new THREE.Fog(0x7a5c86, 50, 160);
 
     // Himmel: weicher Verlauf
     this.sky = new THREE.Mesh(
       new THREE.SphereGeometry(350, 24, 12),
       new THREE.ShaderMaterial({
         side: THREE.BackSide, depthWrite: false, fog: false,
-        uniforms: { top: { value: new THREE.Color(0xa9d4ff) }, bottom: { value: new THREE.Color(0xfbe3f0) } },
+        uniforms: { top: { value: new THREE.Color(0x1e1838) }, bottom: { value: new THREE.Color(0x8a6488) } },
         vertexShader: 'varying float vY; void main(){ vY = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
         fragmentShader: 'uniform vec3 top; uniform vec3 bottom; varying float vY; void main(){ gl_FragColor = vec4(mix(bottom, top, smoothstep(-0.05, 0.6, vY)), 1.0); }',
       }),
@@ -155,18 +157,19 @@ export class View {
     mtex.repeat.x = 4;
     this.backdrop = new THREE.Mesh(
       new THREE.CylinderGeometry(320, 320, 168, 64, 1, true),
-      new THREE.MeshBasicMaterial({ map: mtex, transparent: true, alphaTest: 0.02, side: THREE.BackSide, depthWrite: false, fog: false, color: 0xf4eeff }),
+      new THREE.MeshBasicMaterial({ map: mtex, transparent: true, alphaTest: 0.02, side: THREE.BackSide, depthWrite: false, fog: false, color: 0x8a7aa8 }),
     );
     this.backdrop.renderOrder = -9;
     this.scene.add(this.backdrop);
 
-    this.scene.add(new THREE.HemisphereLight(0xfff0fa, 0xb8d0e0, 1.45));
-    const sun = new THREE.DirectionalLight(0xfff1e0, 2.3);
-    sun.position.set(60, 45, 30);
+    // kühles Himmelslicht + warmes, tief stehendes Abendlicht → stärkere Schattierung
+    this.scene.add(new THREE.HemisphereLight(0xb8a8e8, 0x3a2c48, 1.35));
+    const sun = new THREE.DirectionalLight(0xffc4a0, 2.4);
+    sun.position.set(70, 32, 25);
     this.scene.add(sun);
 
     const flashMat = flashMaterial();
-    const geos = [M.beetleGeo(), M.wolfGeo(), M.shamanGeo(), M.wispGeo(), M.golemGeo(), M.hydraGeo(), M.titanGeo(), M.kingGeo(), M.witchGeo()];
+    const geos = [M.beetleGeo(), M.wolfGeo(), M.shamanGeo(), M.wispGeo(), M.golemGeo(), M.hydraGeo(), M.titanGeo(), M.kingGeo(), M.witchGeo(), M.queenGeo(), M.darkLordGeo()];
     geos.forEach((g, t) => {
       const m = inst(g, flashMat, ENEMY_CAP[t], true);
       this.enemyMesh.push(m);
@@ -186,7 +189,8 @@ export class View {
     this.coins = inst(M.coinGeo(), glow, MAX_PICK);
     this.hearts = inst(M.heartGeo(), glow, 256);
     this.magnets = inst(M.magnetGeo(), glow, 64);
-    this.scene.add(...this.proj, this.blades, this.orbs, this.coins, this.hearts, this.magnets);
+    this.buffMeshes = BUFFS.map((b) => inst(M.buffGeo(b.color), glow, 64));
+    this.scene.add(...this.proj, this.blades, this.orbs, this.coins, this.hearts, this.magnets, ...this.buffMeshes);
     this.pistol = new THREE.Mesh(M.pistolGeo(), plain);
     this.pistol.visible = false;
     this.katana = new THREE.Mesh(M.katanaGeo(), glow);
@@ -369,6 +373,20 @@ export class View {
           this.fx.rings.spawn(x, y, z, 0.5, 18, 0xffffff, 0.5);
           P.spawn(x, y + 1, z, 30, c.setHex(0xff8fa8), 8, 0.15, 0.7, 5);
           break;
+        case EV_BUFF: {
+          const col = BUFFS[v[o + 4]].color;
+          this.fx.rings.spawn(x, y, z, 0.5, 5, col, 0.5);
+          P.spawn(x, y + 1, z, 24, c.setHex(col), 6, 0.15, 0.7, 6);
+          break;
+        }
+        case EV_POWER: {
+          const col = new THREE.Color(RARITIES[v[o + 4]].color).getHex();
+          this.fx.rings.spawn(x, y, z, 3, 0.5, 0x7fe8ff, 0.6);
+          this.fx.rings.spawn(x, y, z, 0.5, 8, col, 0.8);
+          P.spawn(x, y + 1.5, z, 50, c.setHex(col), 7, 0.2, 1.1, 9);
+          this.addTrauma(0.25);
+          break;
+        }
         case EV_BLINK:
           P.spawn(x, y, z, 30, c.setHex(0xc6a8ff), 7, 0.18, 0.6, 3);
           this.fx.rings.spawn(x, y - 2, z, 0.5, 4, 0xc6a8ff, 0.4);
@@ -471,7 +489,8 @@ export class View {
       // Ausholen: Wind-up streckt den Körper
       const wind = sim.eState[i] === 1 ? 0.15 : 0;
       setM(this.enemyMesh[t].instanceMatrix.array as Float32Array, kk * 16, x, y, z, this.enemyYaw[i], sc * (1 - bob * 0.5), sc * (1 + bob + wind), sc * (1 - bob * 0.5));
-      const hit = Math.max(0, sim.eflash[i], sim.efrz[i] > 0 ? 0.55 : 0);
+      // Bosse werden dauernd getroffen: nur leicht aufblitzen, sonst sieht man sie nur weiß
+      const hit = Math.max(0, sim.eflash[i] * (def.boss ? 0.3 : 1), sim.efrz[i] > 0 ? 0.55 : 0);
       (this.enemyFlash[t].array as Float32Array)[kk] = hit > 0.02 || !sim.eElite[i] ? hit : -0.38 - 0.12 * Math.sin(this.time * 5 + i);
       if (sim.eElite[i] && nb < MAX_BARS) {
         const frac = Math.max(0, sim.ehp[i] / sim.emax[i]), w = 1.6 * sc;
@@ -530,6 +549,7 @@ export class View {
     const oa = this.orbs.instanceMatrix.array as Float32Array, ca = this.coins.instanceMatrix.array as Float32Array;
     const ha = this.hearts.instanceMatrix.array as Float32Array, ma = this.magnets.instanceMatrix.array as Float32Array;
     let no = 0, nc = 0, nh = 0, nm = 0;
+    const nbf = [0, 0, 0];
     for (let i = 0; i < sim.kHigh; i++) {
       if (!sim.kAlive[i]) continue;
       const bobY = sim.kMag[i] ? 0 : Math.sin(this.time * 3 + i) * 0.15;
@@ -544,8 +564,15 @@ export class View {
       } else if (kind === 3 && nm < 64) {
         const pulse = 1.8 + Math.sin(this.time * 8) * 0.2;
         setM(ma, nm++ * 16, sim.kx[i], sim.ky[i] + 0.5 + bobY, sim.kz[i], this.time * 3, pulse, pulse, pulse);
+      } else if (kind >= K_BUFF) {
+        const b = kind - K_BUFF;
+        if (nbf[b] < 64) {
+          const pulse = 1.6 + Math.sin(this.time * 7 + b) * 0.25;
+          setM(this.buffMeshes[b].instanceMatrix.array as Float32Array, nbf[b]++ * 16, sim.kx[i], sim.ky[i] + 0.7 + bobY, sim.kz[i], this.time * 2.5, pulse, pulse, pulse);
+        }
       }
     }
+    this.buffMeshes.forEach((m, b) => { m.count = nbf[b]; m.instanceMatrix.needsUpdate = true; });
     this.orbs.count = no; this.coins.count = nc; this.hearts.count = nh; this.magnets.count = nm;
     this.orbs.instanceMatrix.needsUpdate = true; this.coins.instanceMatrix.needsUpdate = true;
     this.hearts.instanceMatrix.needsUpdate = true; this.magnets.instanceMatrix.needsUpdate = true;
@@ -578,7 +605,7 @@ export class View {
       this.pistol.rotation.set(-this.pistolKick * 0.4, a, 0, 'YXZ');
     }
     // Schutzblase sichtbar, solange sie bereit ist
-    this.bubble.visible = sim.items[I_BUBBLE] > 0 && sim.shieldT <= 0;
+    this.bubble.visible = (sim.items[I_BUBBLE] > 0 && sim.shieldT <= 0) || sim.buffT[2] > 0;
     if (this.bubble.visible) {
       this.bubble.position.set(hx, hy + 1, hz);
       this.bubble.scale.setScalar(1 + Math.sin(this.time * 3) * 0.04);

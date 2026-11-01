@@ -1,4 +1,5 @@
 import './style.css';
+import './theme.css';
 import { Sim } from './core/sim';
 import { TICK, BOSSES } from './core/data';
 import { View } from './render/view';
@@ -69,7 +70,7 @@ loadAssassin(`${import.meta.env.BASE_URL}models/assassin.glb`)
 function startRun() {
   sim = new Sim(newSeed(), enemyCap);
   view.attach(sim);
-  view.pitchTarget = 0.95;
+  view.pitchTarget = save.settings.pitch;
   view.zoom = save.settings.zoom;
   acc = 0;
   state = 'run';
@@ -175,6 +176,14 @@ function frame(now: number) {
     view.yaw += input.consumeRot();
     const z = input.consumeZoom();
     if (z !== 1) { view.zoomBy(z); save.settings.zoom = view.zoom; zoomDirty = true; }
+    // Kamera neigen: flacher (mehr Horizont) bis steil von oben
+    const p = input.consumePitch();
+    if (p !== 0) {
+      view.pitchTarget = Math.max(0.45, Math.min(1.3, view.pitchTarget + p));
+      view.pitch = view.pitchTarget;
+      save.settings.pitch = view.pitchTarget;
+      zoomDirty = true;
+    }
     if (state === 'run' && sim.mode === 'run') {
       const [wx, wz] = view.toWorld(input.moveX, input.moveY);
       sim.inX = wx; sim.inZ = wz;
@@ -195,7 +204,7 @@ function frame(now: number) {
     if (sim.mode === 'dead' || sim.mode === 'won') finish(sim.mode === 'won');
     ui.updateHud(sim, view.yaw, dt);
   } else {
-    input.consumePause(); input.consumeJump(); input.consumeRot(); input.consumeZoom();
+    input.consumePause(); input.consumeJump(); input.consumeRot(); input.consumeZoom(); input.consumePitch();
     if (zoomDirty) { zoomDirty = false; writeSave(save); }
     if (state === 'menu') {
       // Heldenauswahl: nah ranzoomen und langsam um den Helden kreisen (Vorschau)

@@ -3,7 +3,7 @@ import { ITEMS, MAX_SLOTS, PASSIVES, RARITIES, RARITY_WEIGHTS, WEAPONS } from '.
 import { newWeapon } from './weapons';
 
 export type OfferKind = 'weapon' | 'passive' | 'item' | 'heal';
-export type OfferSource = 'level' | 'chest' | 'shop';
+export type OfferSource = 'level' | 'chest' | 'shop' | 'shrine';
 
 export interface Offer {
   kind: OfferKind;
@@ -84,7 +84,10 @@ function pickWeighted(s: Sim, pool: { o: Offer; w: number }[]): Offer | null {
 
 export function genOffers(s: Sim, src: OfferSource, n: number): Offer[] {
   const out: Offer[] = [];
-  if (src === 'level') {
+  if (src === 'shrine') {
+    const pool = passivePool(s, src);
+    while (out.length < n) { const o = pickWeighted(s, pool); if (!o) break; out.push(o); }
+  } else if (src === 'level') {
     const pool = [...weaponPool(s), ...passivePool(s, src)];
     while (out.length < n) { const o = pickWeighted(s, pool); if (!o) break; out.push(o); }
   } else if (src === 'chest') {

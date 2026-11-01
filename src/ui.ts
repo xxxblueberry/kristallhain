@@ -1,6 +1,6 @@
 // HUD & Menüs als DOM-Overlay (wenige Elemente, ereignisarm aktualisiert).
 import type { Sim } from './core/sim';
-import { ENEMIES, ITEMS, MAX_SLOTS, PASSIVES, RARITIES, WEAPONS, W_RELICS } from './core/data';
+import { BUFFS, ENEMIES, ITEMS, MAX_SLOTS, PASSIVES, RARITIES, WEAPONS, W_RELICS } from './core/data';
 import { offerInfo, offerValid, type Offer } from './core/upgrades';
 import type { SaveData } from './save';
 import { SKINS } from './render/hero';
@@ -45,7 +45,7 @@ export class UI {
     this.hud.innerHTML = `
       <div class="xpbar"><div class="xpfill"></div><span class="xptext"></span></div>
       <div class="tl">
-        <div class="hprow"><div class="lvl">1</div><div class="hpbar"><div class="hpfill"></div><span class="hptext"></span></div></div>
+        <div class="hprow"><div class="lvl">1</div><div class="hpbar"><div class="hpfill"></div><span class="hptext"></span></div><div class="buffs"></div></div>
         <div class="hudrow"><span class="hudlabel">Waffen</span><div class="slots"></div></div>
         <div class="hudrow"><span class="hudlabel">Fähigk.</span><div class="passives"></div></div>
         <div class="hudrow"><span class="hudlabel">Relikte</span><div class="relics"></div></div>
@@ -60,7 +60,7 @@ export class UI {
       <div class="vignette"></div>
       <div class="lowhp"></div>`;
     root.appendChild(this.hud);
-    for (const k of ['xpbar', 'xpfill', 'xptext', 'lvl', 'hpfill', 'hptext', 'slots', 'passives', 'relics', 'timer', 'boss', 'bossname', 'bossfill', 'gold', 'kills', 'banner', 'toast', 'interact', 'ilabel', 'ifill', 'vignette', 'lowhp']) {
+    for (const k of ['xpbar', 'xpfill', 'xptext', 'buffs', 'lvl', 'hpfill', 'hptext', 'slots', 'passives', 'relics', 'timer', 'boss', 'bossname', 'bossfill', 'gold', 'kills', 'banner', 'toast', 'interact', 'ilabel', 'ifill', 'vignette', 'lowhp']) {
       this.el[k] = this.hud.querySelector('.' + k)!;
     }
     this.mini = (this.hud.querySelector('.minimap') as HTMLCanvasElement).getContext('2d')!;
@@ -152,7 +152,7 @@ export class UI {
   // ---------------- Bildschirme ----------------
   showMain(save: SaveData, isTouch: boolean, onStart: () => void, onSettings: () => void, onSkins: () => void) {
     const c = h('div', 'panel main');
-    c.innerHTML = `<h1>Kristallhain</h1><p class="sub">Überlebe den verwunschenen Hain – 11 Minuten, zwei Bosse.</p>`;
+    c.innerHTML = `<h1>Kristallhain</h1><p class="sub">Überlebe den verfluchten Hain – fünf Bosse, dann der Schattenfürst.</p>`;
     c.appendChild(this.button({ label: 'Lauf starten', onClick: onStart, primary: true }));
     const skin = SKINS.find((s) => s.id === save.settings.skin) ?? SKINS[0];
     c.appendChild(this.button({ label: `Held: ${skin.icon} ${skin.name}`, onClick: onSkins }));
@@ -160,8 +160,8 @@ export class UI {
     const best = save.bestTime > 0 ? `Bestzeit ${fmtTime(save.bestTime)} · Rekord ${save.bestKills} Kills · ${save.wins} Siege` : 'Noch kein Lauf gespielt';
     c.appendChild(h('p', 'best', best));
     c.appendChild(h('p', 'controls', isTouch
-      ? 'Links ziehen: laufen · Rechts wischen: Kamera · ⤒: springen · 🔍: Zoom'
-      : 'WASD: laufen · Leertaste: springen · Q/E oder Maus ziehen: Kamera · Mausrad oder +/−: Zoom · Esc: Pause · Gamepad geht auch (L1/R1 = Zoom)'));
+      ? 'Links ziehen: laufen · Rechts wischen: Kamera drehen & neigen · ⤒: springen · 🔍: Zoom'
+      : 'WASD: laufen · Leertaste: springen · Maus ziehen oder Q/E, R/F: Kamera drehen & neigen · Mausrad oder +/−: Zoom · Esc: Pause · Gamepad geht auch'));
     this.open('main', c, null);
   }
 
@@ -347,6 +347,13 @@ export class UI {
     this.set('gold', sim.gold, (v) => (e.gold.textContent = String(v)));
     this.set('kills', sim.kills, (v) => (e.kills.textContent = String(v)));
 
+    const bsig = Array.from(sim.buffT).map((t) => (t > 0 ? Math.ceil(t) : 0)).join(',');
+    this.set('buffs', bsig, () => {
+      let html = '';
+      sim.buffT.forEach((t, b) => { if (t > 0) html += `<span class="buff" title="${BUFFS[b].name}">${BUFFS[b].icon}<b>${Math.ceil(t)}</b></span>`; });
+      e.buffs.innerHTML = html;
+    });
+
     const wsig = sim.weapons.map((w) => `${w.id}:${w.level}`).join(',');
     this.set('slots', wsig, () => {
       let html = '';
@@ -407,8 +414,8 @@ export class UI {
     c.clearRect(0, 0, S, S);
     c.save();
     c.beginPath(); c.arc(R, R, R - 1, 0, Math.PI * 2);
-    c.fillStyle = 'rgba(255,250,255,0.55)'; c.fill();
-    c.strokeStyle = 'rgba(140,110,180,0.5)'; c.lineWidth = 2; c.stroke();
+    c.fillStyle = 'rgba(24,18,40,0.62)'; c.fill();
+    c.strokeStyle = 'rgba(190,160,255,0.45)'; c.lineWidth = 2; c.stroke();
     c.clip();
     const cy = Math.cos(yaw), sy = Math.sin(yaw);
     const proj = (wx: number, wz: number, clamp: boolean): [number, number] => {
@@ -421,14 +428,17 @@ export class UI {
     for (const it of sim.interact) {
       if (it.used) continue;
       const far = Math.hypot(it.x - sim.hx, it.z - sim.hz) > range;
-      if (far && it.kind === 1) continue;
+      if (far && it.kind !== 0) continue;
       const [x, y] = proj(it.x, it.z, true);
       c.globalAlpha = far ? 0.6 : 1;
       if (it.kind === 0) {
         c.fillStyle = '#a98cf0';
         c.beginPath(); c.moveTo(x, y - 6); c.lineTo(x + 5, y); c.lineTo(x, y + 6); c.lineTo(x - 5, y); c.fill();
+      } else if (it.kind === 2) {
+        c.strokeStyle = '#7fe8ff'; c.lineWidth = 2;
+        c.beginPath(); c.arc(x, y, 4, 0, Math.PI * 2); c.stroke();
       } else {
-        c.fillStyle = sim.gold >= sim.chestCost ? '#f0b44c' : '#c9b48a';
+        c.fillStyle = sim.gold >= sim.currentChestCost() ? '#f0b44c' : '#8a7a5a';
         c.fillRect(x - 3, y - 3, 6, 6);
       }
     }
@@ -442,7 +452,7 @@ export class UI {
     const fpx = sim.fx * cy - sim.fz * sy, fpy = sim.fx * sy + sim.fz * cy;
     c.translate(R, R);
     c.rotate(Math.atan2(fpx, -fpy));
-    c.fillStyle = '#5b4a9a';
+    c.fillStyle = '#f2eaff';
     c.beginPath(); c.moveTo(0, -6); c.lineTo(4.5, 5); c.lineTo(-4.5, 5); c.fill();
     c.restore();
   }

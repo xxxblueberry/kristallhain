@@ -1,13 +1,19 @@
 // Statische Welt: Terrain-Mesh, Requisiten (instanziert), schwebende Kristalle, Schreine & Truhen.
 import * as THREE from 'three';
 import type { Sim } from '../core/sim';
-import { WORLD, HALF, STEP_H } from '../core/terrain';
+import { HALF, STEP_H, GRID_SIZE, GRID_SEGS } from '../core/terrain';
 import { Rng } from '../core/rng';
-import { treeGeo, rockGeo, flowerGeo, crystalGeo, shrineGeo, chestGeo } from './models';
+import {
+  treeGeo, rockGeo, flowerGeo, crystalGeo, shrineGeo, chestGeo, deadTreeGeo, pillarGeo, crystalClusterGeo, obeliskGeo, graveGeo, powerShrineGeo,
+} from './models';
+import { POWER_TIME } from '../core/sim';
 // je Höhenstufe eine Wiesenfarbe; höhere Ebenen werden kühler (Mint/Türkis), Klippen bleiben lila
-const GRASS = ['#bfe8c4', '#cdeccb', '#d9f0c8', '#e7f2c4', '#f3efca', '#e3efc0', '#cfeac2', '#bfe6c9', '#b3e0cf', '#aedbd6', '#b2d6de', '#bcd6e8', '#c8d8ee'].map((c) => new THREE.Color(c));
-const CLIFF = [new THREE.Color('#b9a6dc'), new THREE.Color('#cfa9cc'), new THREE.Color('#b0a2d6')];
-const SNOW = new THREE.Color('#f4eefc');
+// gedämpfte Dämmerungs-Palette (dunkler, weniger verspielt)
+const GRASS = ['#6f9a7c', '#76a080', '#7ea584', '#86a785', '#8ea585', '#84a487', '#7a9f8b', '#72998f', '#6c9394', '#6f8d9c', '#7a8aa2', '#8690aa', '#959bb4'].map((c) => new THREE.Color(c));
+const CLIFF = [new THREE.Color('#5e4e7c'), new THREE.Color('#6e5274'), new THREE.Color('#584e78')];
+const SNOW = new THREE.Color('#c8c4dc');
+// Biom-Tönung: Totholz bräunlich-dunkel, Hain neutral, Kristallfeld kühl-violett
+const TINT_DEAD = new THREE.Color(0.82, 0.74, 0.7), TINT_CRYSTAL = new THREE.Color(0.82, 0.84, 1.08);
 
 // ---------------- Boden-Texturen ----------------
 // Einmal laden, für alle Läufe teilen. Mischung im Shader nach Höhe, Steilheit und Sand-Maske.
@@ -36,10 +42,10 @@ function terrainMaterial(uTex: { value: number }) {
       uTex, tGrass: { value: t.grass }, tHigh: { value: t.meadow_high }, tCliff: { value: t.cliff },
       tSnow: { value: t.snow }, tSand: { value: t.path },
     });
-    sh.vertexShader = 'attribute float aSand;\nvarying float vSand;\nvarying vec3 vWPos;\nvarying vec3 vWNor;\n' +
-      sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vSand = aSand; vWPos = position; vWNor = normal;');
+    sh.vertexShader = 'attribute float aSand;\nattribute vec3 aTint;\nvarying float vSand;\nvarying vec3 vTint;\nvarying vec3 vWPos;\nvarying vec3 vWNor;\n' +
+      sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vSand = aSand; vTint = aTint; vWPos = position; vWNor = normal;');
     sh.fragmentShader = `uniform float uTex; uniform sampler2D tGrass, tHigh, tCliff, tSnow, tSand;
-      varying float vSand; varying vec3 vWPos; varying vec3 vWNor;
+      varying float vSand; varying vec3 vTint; varying vec3 vWPos; varying vec3 vWNor;
       // zwei Maßstäbe mischen, damit das Kachelmuster nicht auffällt
       vec3 tex2(sampler2D t, vec2 uv) { return mix(texture2D(t, uv).rgb, texture2D(t, uv * 0.29 + vec2(0.37, 0.71)).rgb, 0.35); }
       vec3 triCliff(vec3 p, vec3 n) {
@@ -56,9 +62,9 @@ function terrainMaterial(uTex: { value: number }) {
           ground = mix(ground, tex2(tSand, uv * 1.2), vSand * 0.85);
           float cliff = smoothstep(0.82, 0.62, n.y);
           vec3 tc = mix(ground, triCliff(vWPos, n), cliff);
-          // etwas Sättigung raus und aufhellen, damit es pastellig bleibt
+          // gedämpft und abgedunkelt (Dämmerungs-Stimmung), plus Biom-Tönung
           float l = dot(tc, vec3(0.299, 0.587, 0.114));
-          tc = mix(tc, vec3(l), 0.18) * 1.06 + 0.02;
+          tc = mix(tc, vec3(l), 0.3) * 0.78 * vTint;
           diffuseColor.rgb = mix(diffuseColor.rgb, tc, uTex);
         }`);
   };
@@ -73,6 +79,7 @@ export class World {
   private shrineTops: THREE.Mesh[] = [];
   private shrines: THREE.Mesh[] = [];
   private chests: THREE.Mesh[] = [];
+  private power: { base: THREE.Mesh; ring: THREE.Mesh; ringMat: THREE.MeshBasicMaterial; rune: THREE.Mesh }[] = [];
   private usedMat = new THREE.MeshLambertMaterial({ color: 0x9a94a8, flatShading: true });
   private disposables: { dispose(): void }[] = [];
   private windTime = { value: 0 };
@@ -90,8 +97,8 @@ export class World {
 
   private buildTerrain(lowQ: boolean) {
     const T = this.sim.terrain;
-    const size = WORLD + 140, segs = lowQ ? 150 : 230;
-    const g = new THREE.PlaneGeometry(size, size, segs, segs);
+    // exakt das Gitter der Simulation (Kollision = Optik)
+    const g = new THREE.PlaneGeometry(GRID_SIZE, GRID_SIZE, GRID_SEGS, GRID_SEGS);
     g.rotateX(-Math.PI / 2);
     const p = g.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < p.count; i++) p.setY(i, T.height(p.getX(i), p.getZ(i)));
@@ -116,15 +123,22 @@ export class World {
     ng.setAttribute('color', new THREE.BufferAttribute(col, 3));
     // Sand-Plätze: Startlichtung und um die Schreine
     const sand = new Float32Array(pos.length / 3);
-    const shrines = this.sim.interact.filter((o) => o.kind === 0);
+    const tint = new Float32Array(pos.length);
+    const shrines = this.sim.interact.filter((o) => o.kind !== 1);
     const sm = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    const tc = new THREE.Color();
     for (let v = 0; v < sand.length; v++) {
       const x = pos[v * 3], z = pos[v * 3 + 2];
       let s = 1 - sm(7, 13, Math.hypot(x, z));
       for (const o of shrines) s = Math.max(s, 1 - sm(3.5, 6.5, Math.hypot(x - o.x, z - o.z)));
       sand[v] = s;
+      const b = T.biome(x, z);
+      tc.setRGB(1, 1, 1).lerp(TINT_DEAD, 1 - sm(0.3, 0.42, b)).lerp(TINT_CRYSTAL, sm(0.58, 0.7, b));
+      tint[v * 3] = tc.r; tint[v * 3 + 1] = tc.g; tint[v * 3 + 2] = tc.b;
+      col[v * 3] *= tc.r; col[v * 3 + 1] *= tc.g; col[v * 3 + 2] *= tc.b;
     }
     ng.setAttribute('aSand', new THREE.BufferAttribute(sand, 1));
+    ng.setAttribute('aTint', new THREE.BufferAttribute(tint, 3));
     const mesh = new THREE.Mesh(ng, this.track(terrainMaterial(this.texUniform)));
     this.track(ng);
     this.group.add(mesh);
@@ -157,10 +171,13 @@ export class World {
     const flowerMat = this.track(this.windMaterial(0.05, 0.35));
     const f = lowQ ? 0.55 : 1;
     // Bäume & Felsen kommen aus der Simulation (dort mit Kollision)
-    const geos = [treeGeo(0xffc2dc, 0xffd6e8), treeGeo(0xa8e6c8, 0xc4f0d8), rockGeo()];
+    // Reihenfolge = PROP_* in sim.ts
+    const glowMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x6a3aa8, emissiveIntensity: 0.9 }));
+    const geos = [treeGeo(0xa86a8c, 0xbc84a2), treeGeo(0x4c8a80, 0x64a094), rockGeo(), deadTreeGeo(), pillarGeo(), crystalClusterGeo(), obeliskGeo(), graveGeo()];
+    const mats = [treeMat, treeMat, mat, treeMat, mat, glowMat, mat, mat];
     geos.forEach((g, kind) => {
       const list = this.sim.props.filter((p) => p.kind === kind);
-      const mesh = new THREE.InstancedMesh(this.track(g), kind === 2 ? mat : treeMat, Math.max(1, list.length));
+      const mesh = new THREE.InstancedMesh(this.track(g), mats[kind], Math.max(1, list.length));
       const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
       list.forEach((p, i) => {
         q.setFromAxisAngle(up, p.rot);
@@ -169,7 +186,7 @@ export class World {
       mesh.count = list.length;
       this.group.add(mesh);
     });
-    for (const c of [0xffb8d8, 0xfff0a0, 0xc6b8ff, 0xffffff]) this.scatter(flowerGeo(c), flowerMat, Math.floor(260 * f), rng, 0.8, 1.4);
+    for (const c of [0xd88aa8, 0xd8c070, 0x9a8ad8, 0xc8c0d8]) this.scatter(flowerGeo(c), flowerMat, Math.floor(220 * f), rng, 0.8, 1.4);
 
     // Schwebende Kristalle (leuchtend, wippend)
     const T = this.sim.terrain;
@@ -215,6 +232,10 @@ export class World {
     const sg = this.track(shrineGeo()), cg = this.track(chestGeo());
     const topGeo = this.track(new THREE.OctahedronGeometry(0.6).scale(0.8, 1.4, 0.8));
     const topMat = this.track(new THREE.MeshLambertMaterial({ color: 0xc6a8ff, emissive: 0xc6a8ff, emissiveIntensity: 0.6, flatShading: true }));
+    const pg = this.track(powerShrineGeo());
+    const ringGeo = this.track(new THREE.RingGeometry(2.4, 2.9, 40).rotateX(-Math.PI / 2));
+    const runeGeo = this.track(new THREE.OctahedronGeometry(0.45).scale(0.7, 1.5, 0.7));
+    const runeMat = this.track(new THREE.MeshLambertMaterial({ color: 0x7fe8ff, emissive: 0x7fe8ff, emissiveIntensity: 0.9, flatShading: true }));
     for (const it of this.sim.interact) {
       if (it.kind === 0) {
         const m = new THREE.Mesh(sg, mat);
@@ -224,12 +245,24 @@ export class World {
         this.shrines.push(m);
         this.shrineTops.push(top);
         this.group.add(m, top);
-      } else {
+      } else if (it.kind === 1) {
         const m = new THREE.Mesh(cg, mat);
         m.position.set(it.x, it.y, it.z);
         m.rotation.y = (it.x * 13.37) % (Math.PI * 2);
         this.chests.push(m);
         this.group.add(m);
+      } else {
+        // Machtschrein: Steinkreis, Lade-Ring am Boden, schwebende Rune
+        const base = new THREE.Mesh(pg, mat);
+        base.position.set(it.x, it.y, it.z);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0x7fe8ff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide });
+        this.track(ringMat);
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.set(it.x, it.y + 0.2, it.z);
+        const rune = new THREE.Mesh(runeGeo, runeMat);
+        rune.position.set(it.x, it.y + 2.6, it.z);
+        this.power.push({ base, ring, ringMat, rune });
+        this.group.add(base, ring, rune);
       }
     }
   }
@@ -247,7 +280,7 @@ export class World {
       }
       mesh.instanceMatrix.needsUpdate = true;
     }
-    let si = 0, ci = 0;
+    let si = 0, ci = 0, pi = 0;
     for (const it of this.sim.interact) {
       if (it.kind === 0) {
         const top = this.shrineTops[si], base = this.shrines[si++];
@@ -255,8 +288,19 @@ export class World {
         top.rotation.y = time * 1.5;
         top.position.y = it.y + 4 + Math.sin(time * 2 + it.x) * 0.25;
         if (it.used && base.material !== this.usedMat) base.material = this.usedMat;
-      } else {
+      } else if (it.kind === 1) {
         this.chests[ci++].visible = !it.used;
+      } else {
+        const p = this.power[pi++];
+        p.rune.visible = p.ring.visible = !it.used;
+        if (it.used) { if (p.base.material !== this.usedMat) p.base.material = this.usedMat; continue; }
+        const k = Math.min(1, it.hold / POWER_TIME);
+        p.rune.rotation.y = time * (1.2 + k * 8);
+        p.rune.position.y = it.y + 2.6 + Math.sin(time * 2 + it.z) * 0.2 + k * 0.8;
+        // Ring zieht sich beim Laden zusammen und wird heller
+        const sc = 1 - k * 0.55;
+        p.ring.scale.set(sc, 1, sc);
+        p.ringMat.opacity = 0.35 + k * 0.6 + Math.sin(time * 4) * 0.08;
       }
     }
   }

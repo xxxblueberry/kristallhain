@@ -1,5 +1,5 @@
 // Platzhalter-Sounds, rein synthetisch über Web Audio (keine Dateien).
-import { EV_HIT, EV_KILL, EV_XP, EV_HURT, EV_LEVEL, EV_BOOM, EV_SHOOT, EV_JUMP, EV_LAND, EV_CHAIN, EV_NOVA, EV_GOLD, EV_CHEST, EV_HEAL, EV_SHIELD, EV_REVIVE, EV_SLASH, EV_MAGNET, EV_BLINK, EV_STRIDE, type Sim } from './core/sim';
+import { EV_HIT, EV_KILL, EV_XP, EV_HURT, EV_LEVEL, EV_BOOM, EV_SHOOT, EV_JUMP, EV_LAND, EV_CHAIN, EV_NOVA, EV_GOLD, EV_CHEST, EV_HEAL, EV_SHIELD, EV_REVIVE, EV_SLASH, EV_MAGNET, EV_BLINK, EV_BUFF, EV_POWER, EV_STRIDE, type Sim } from './core/sim';
 import { W_METEOR, W_PISTOL } from './core/data';
 
 export class Sfx {
@@ -110,6 +110,8 @@ export class Sfx {
         case EV_SLASH: if (this.ok('slash', 0.06)) { this.burst(0.12, 0.09, 5000, 'highpass'); this.tone('sine', 1600, 500, 0.1, 0.04); } break;
         case EV_MAGNET: [660, 880, 1320].forEach((f, i) => this.tone('sine', f, f * 1.5, 0.3, 0.08, i * 0.05)); break;
         case EV_BLINK: if (this.ok('blink', 0.2)) { this.tone('triangle', 300, 1400, 0.25, 0.08); this.burst(0.2, 0.05, 3000, 'bandpass'); } break;
+        case EV_BUFF: [440, 660, 880].forEach((f, i) => this.tone('sawtooth', f, f * 1.02, 0.18, 0.05, i * 0.04)); this.burst(0.25, 0.06, 4000, 'highpass'); break;
+        case EV_POWER: [262, 392, 523, 784, 1047].forEach((f, i) => this.tone('triangle', f, f, 0.3, 0.1, i * 0.08)); break;
         case EV_HEAL: if (this.ok('heal', 0.1)) { this.tone('sine', 520, 780, 0.15, 0.08); this.tone('sine', 780, 1040, 0.15, 0.06, 0.08); } break;
         case EV_SHIELD: this.tone('sine', 1400, 700, 0.25, 0.1); this.burst(0.2, 0.06, 5000, 'highpass'); break;
         case EV_REVIVE: [392, 523, 659, 784, 1047].forEach((f, i) => this.tone('triangle', f, f, 0.25, 0.12, i * 0.09)); break;

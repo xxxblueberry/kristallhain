@@ -1,0 +1,93 @@
+/* Düsteres Design (überschreibt die Pastell-Grundwerte aus style.css)
+   + schmale XP-Leiste + kompaktes HUD auf Handys. */
+
+:root {
+  --ink: #efe6ff;
+  --ink-soft: #b4a4d4;
+  --panel: rgba(24, 18, 40, 0.86);
+  --line: rgba(180, 150, 240, 0.32);
+  --edge: rgba(200, 170, 255, 0.28);
+  --gold: #e8b85a;
+}
+html, body { background: #1a1428; }
+
+/* ---------- XP-Leiste: wieder schmal, volle Breite, ohne Text ---------- */
+.xpbar {
+  top: var(--sat); left: 0; right: 0; width: auto; transform: none;
+  height: 7px; border: none; border-radius: 0; box-shadow: none; background: rgba(20, 14, 34, 0.55);
+}
+.xpfill { background: linear-gradient(90deg, #5fe0c0, #8ff0d8); box-shadow: 0 0 8px #8ff0d8; }
+.xptext { display: none; }
+.xpbar.up { animation: xpflash 0.6s ease-out; }
+@keyframes xpflash { 0% { box-shadow: 0 0 22px 6px #8ff0d8; } 100% { box-shadow: none; } }
+.tl { top: calc(18px + var(--sat)); }
+.tc { top: calc(14px + var(--sat)); }
+.tr { top: calc(16px + var(--sat)); }
+.pausebtn, .zoombtn { top: calc(16px + var(--sat)); }
+
+/* ---------- HUD dunkel ---------- */
+.lvl { background: linear-gradient(135deg, #6a4fb0, #a0447a); border: 2px solid var(--edge); }
+.hpbar { background: rgba(20, 14, 34, 0.7); border: 2px solid var(--edge); }
+.hpfill { background: linear-gradient(90deg, #d8324f, #ff6f8a); }
+.slot { background: linear-gradient(180deg, #3e2f6a, #2a2048); border: 2px solid var(--edge); }
+.slot.empty { background: rgba(20, 14, 34, 0.35); border: 2px dashed rgba(200, 170, 255, 0.25); }
+.pas, .rel { background: rgba(24, 18, 40, 0.78); color: var(--ink); }
+.pas sub, .rel sub { color: var(--ink-soft); }
+.stat, .pausebtn, .zoombtn, .ilabel, .toast { background: var(--panel); color: var(--ink); border-color: var(--edge); }
+.toast { border-color: rgba(232, 184, 90, 0.6); }
+.timer { text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5), 0 0 12px rgba(192, 77, 255, 0.6); }
+.bossbar { background: rgba(10, 6, 18, 0.6); border-color: var(--edge); }
+.bossname { text-shadow: 0 1px 3px #000, 0 0 10px rgba(255, 60, 100, 0.7); }
+.banner { text-shadow: 0 3px 0 rgba(0, 0, 0, 0.6), 0 0 18px rgba(192, 77, 255, 0.9); }
+.hudlabel { color: var(--ink-soft); text-shadow: 0 1px 2px #000; }
+.buffs { display: flex; gap: 4px; margin-left: 4px; }
+.buff {
+  display: flex; align-items: center; gap: 2px; font-size: 15px; padding: 1px 6px; border-radius: 10px;
+  background: var(--panel); border: 2px solid rgba(255, 200, 90, 0.6); color: var(--ink); animation: buffpulse 1s ease-in-out infinite;
+}
+.buff b { font-size: 12px; }
+@keyframes buffpulse { 50% { box-shadow: 0 0 10px rgba(255, 200, 90, 0.7); } }
+.jumpbtn { background: rgba(80, 52, 140, 0.75); border-color: var(--edge); }
+.joybase { background: rgba(20, 14, 34, 0.3); border-color: rgba(200, 170, 255, 0.45); }
+.joyknob { background: rgba(220, 200, 255, 0.8); }
+
+/* ---------- Menüs dunkel ---------- */
+.overlay { background: radial-gradient(ellipse at center, rgba(30, 20, 50, 0.35), rgba(8, 4, 16, 0.6)); }
+.overlay[data-screen='main'] { background: linear-gradient(180deg, rgba(0, 0, 0, 0) 30%, rgba(10, 6, 20, 0.55)); }
+.panel { background: var(--panel); border: 2px solid var(--edge); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55); color: var(--ink); }
+h1 { background-image: linear-gradient(90deg, #c8a8ff, #ff6a9a, #7fd8d0, #c8a8ff); }
+h2.glow { color: #fff; text-shadow: 0 2px 0 #4a2a7a, 0 0 16px rgba(192, 77, 255, 0.8); }
+.btn { background: rgba(255, 255, 255, 0.06); color: var(--ink); border: 2px solid var(--line); }
+.btn.primary { background: linear-gradient(135deg, #6a4fb0, #a0447a); border-color: var(--edge); color: #fff; }
+.btn.focus, .btn:hover:not(:disabled) { box-shadow: 0 0 0 2px #1a1428, 0 0 0 4px #c8a8ff; }
+.card { background: linear-gradient(180deg, #2c2244, #1e1830); color: var(--ink); }
+.card.new { background: linear-gradient(180deg, #3a2a3a, #241a28); }
+.card .cdesc { color: var(--ink-soft); }
+.card.k-weapon { background: linear-gradient(180deg, #4a3a8a, #2a2050); border-color: #9a86e0; }
+.card.k-item { background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--rc) 22%, #2c2244), #1a1428); }
+.card.focus, .card:hover:not(:disabled) { box-shadow: 0 0 0 2px #1a1428, 0 0 0 5px var(--rc, #c8a8ff), 0 0 24px var(--rc, #c8a8ff); }
+.cprice { color: var(--gold); }
+.statlist div { border-bottom-color: var(--line); }
+.statlist b, .stats b { color: var(--ink); }
+.dmgbar { background: rgba(255, 255, 255, 0.08); }
+.dmgbar div { background: linear-gradient(90deg, #6a4fb0, #c04d8a); }
+.rotate { background: #1a1428; color: var(--ink); }
+
+/* ---------- Handy quer: kompaktes HUD ---------- */
+@media (max-height: 520px) {
+  .xpbar { height: 5px; }
+  .tl { transform: scale(0.62); transform-origin: top left; top: calc(10px + var(--sat)); left: calc(10px + var(--sal)); }
+  .tr { transform: scale(0.62); transform-origin: top right; top: calc(10px + var(--sat)); right: calc(10px + var(--sar)); }
+  .tc { transform: translateX(-50%) scale(0.72); transform-origin: top center; top: calc(6px + var(--sat)); }
+  .pausebtn, .zoombtn { width: 30px; height: 30px; font-size: 11px; top: calc(10px + var(--sat)); }
+  .pausebtn { right: calc(92px + var(--sar)); }
+  .zoombtn { right: calc(128px + var(--sar)); }
+  .minimap { width: 96px; height: 96px; }
+  .jumpbtn { width: 62px; height: 62px; font-size: 26px; right: calc(20px + var(--sar)); bottom: calc(18px + var(--sab)); }
+  .banner { font-size: 17px; top: 18%; }
+  .toast { font-size: 12px; padding: 5px 10px; bottom: calc(60px + var(--sab)); max-width: 80vw; white-space: normal; text-align: center; }
+  .interact { bottom: calc(22px + var(--sab)); }
+  .ilabel { font-size: 11px; }
+  .joybase { width: 100px; height: 100px; margin: -50px 0 0 -50px; }
+  .joyknob { width: 42px; height: 42px; }
+}
