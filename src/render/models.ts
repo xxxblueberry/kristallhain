@@ -269,6 +269,133 @@ export function darkLordGeo() {
   ]);
 }
 
+// ---- neue Monster ----
+export function skeletonGeo() {
+  const B = 0xe2dccc, D = 0x2a2236;
+  const parts = [
+    part(box(0.14, 0.75, 0.14), B, [-0.18, 0.38, 0]),
+    part(box(0.14, 0.75, 0.14), B, [0.18, 0.38, 0]),
+    part(box(0.5, 0.15, 0.3), B, [0, 0.82, 0]),
+    part(box(0.1, 0.7, 0.1), B, [0, 1.2, -0.05]),
+    part(ico(0.3, 1), B, [0, 1.85, 0.02]),
+    part(box(0.1, 0.1, 0.05), 0xff4d6a, [-0.1, 1.88, 0.28]),
+    part(box(0.1, 0.1, 0.05), 0xff4d6a, [0.1, 1.88, 0.28]),
+    part(box(0.22, 0.08, 0.05), D, [0, 1.72, 0.27]),
+    part(box(0.12, 0.6, 0.12), B, [-0.38, 1.25, 0.1], [0.3, 0, 0.2]),
+    part(box(0.12, 0.6, 0.12), B, [0.38, 1.25, 0.15], [-0.6, 0, -0.2]),
+    // rostiges Schwert + kaputtes Schild
+    part(box(0.08, 0.06, 1.1), 0x9a8a8a, [0.45, 1.1, 0.7], [0.2, 0, 0]),
+    part(box(0.1, 0.55, 0.45), 0x5a4038, [-0.5, 1.2, 0.25], [0, 0.4, 0]),
+  ];
+  for (let k = 0; k < 4; k++) parts.push(part(box(0.5, 0.05, 0.08), B, [0, 1.05 + k * 0.13, 0.08]));
+  return merge(parts);
+}
+export function batGeo() {
+  return merge([
+    part(ico(0.25, 1), 0x4a3a6a, [0, 0, 0]),
+    part(cone(0.07, 0.18, 4), 0x4a3a6a, [-0.12, 0.27, 0.05]),
+    part(cone(0.07, 0.18, 4), 0x4a3a6a, [0.12, 0.27, 0.05]),
+    part(box(0.07, 0.07, 0.04), 0xff5a8a, [-0.08, 0.05, 0.23]),
+    part(box(0.07, 0.07, 0.04), 0xff5a8a, [0.08, 0.05, 0.23]),
+    part(box(0.75, 0.04, 0.42), 0x6a5a8a, [-0.5, 0.06, -0.02], [0, 0, 0.35]),
+    part(box(0.75, 0.04, 0.42), 0x6a5a8a, [0.5, 0.06, -0.02], [0, 0, -0.35]),
+  ]);
+}
+export function shadeGeo() {
+  return merge([
+    part(cone(0.6, 1.9, 7), 0x2e2448, [0, 0.95, 0], [PI, 0, 0]),
+    part(cyl(0.35, 0.5, 0.7, 7), 0x3a2e5a, [0, 1.6, 0]),
+    part(cone(0.42, 0.75, 7), 0x221a36, [0, 2.15, -0.05], [-0.2, 0, 0]),
+    part(box(0.12, 0.06, 0.04), 0x8af0ff, [-0.11, 1.92, 0.33]),
+    part(box(0.12, 0.06, 0.04), 0x8af0ff, [0.11, 1.92, 0.33]),
+    part(box(0.18, 0.9, 0.18), 0x2e2448, [-0.45, 1.3, 0.25], [0.7, 0, 0.3]),
+    part(box(0.18, 0.9, 0.18), 0x2e2448, [0.45, 1.3, 0.25], [0.7, 0, -0.3]),
+  ]);
+}
+
+// ---- neue Waffen ----
+export function skullGeo() {
+  return merge([
+    part(ico(0.32, 1), 0xf0e6d8, [0, 0, 0]),
+    part(box(0.26, 0.14, 0.2), 0xe0d6c8, [0, -0.2, 0.1]),
+    part(box(0.1, 0.1, 0.05), 0xff3aa0, [-0.11, 0.03, 0.29]),
+    part(box(0.1, 0.1, 0.05), 0xff3aa0, [0.11, 0.03, 0.29]),
+    part(cone(0.3, 0.9, 6), 0xb03aff, [0, 0.05, -0.55], [-PI / 2, 0, 0]),
+    part(cone(0.18, 0.6, 6), 0xff5ad0, [0, 0.12, -0.45], [-PI / 2, 0, 0]),
+  ]);
+}
+export const bloodWaveGeo = () => merge([part(new THREE.TorusGeometry(0.7, 0.12, 4, 10, PI), 0xd8143a, [0, 0, 0], [PI / 2, 0, 0])]);
+export function bloodSwordGeo() {
+  return merge([
+    part(box(0.1, 0.24, 2.4), 0x4a0a18, [0, 0, 1.3]),
+    part(box(0.04, 0.12, 2.2), 0xff2a4a, [0, 0.13, 1.25]),
+    part(cone(0.13, 0.4, 4), 0x4a0a18, [0, 0, 2.65], [PI / 2, 0, 0]),
+    part(box(0.6, 0.14, 0.14), 0x1a1018, [0, 0, 0.05]),
+    part(box(0.09, 0.09, 0.55), 0x2a1a20, [0, 0, -0.3]),
+    part(oct(0.09), 0xff2a4a, [0, 0, -0.6]),
+  ]);
+}
+export const lanternGeo = () => merge([
+  part(box(0.16, 0.2, 0.16), 0x2a2030, [0, 0, 0]),
+  part(oct(0.09), 0xffd890, [0, 0, 0], [0, 0, 0], [1, 1.3, 1]),
+  part(cyl(0.02, 0.02, 0.18, 4), 0x2a2030, [0, 0.18, 0]),
+]);
+
+// ---- Welt: Ruinen, Altäre, Feuer, Pilze ----
+export function wallGeo() {
+  return merge([
+    part(box(4.4, 2.2, 0.8), 0x7c7290, [0, 1.1, 0]),
+    part(box(1.4, 0.7, 0.8), 0x7c7290, [-1.4, 2.5, 0]),
+    part(box(0.8, 0.4, 0.8), 0x8a809e, [0.6, 2.4, 0], [0, 0, 0.2]),
+    part(box(4.6, 0.25, 1.0), 0x5a5470, [0, 0.12, 0]),
+    part(box(1.6, 0.18, 0.85), 0x5f8a6a, [0.8, 2.25, 0]),
+    part(box(0.6, 0.45, 0.5), 0x6e6680, [2.6, 0.22, 0.6], [0.3, 0.4, 0.1]),
+  ]);
+}
+export function floorGeo() {
+  const parts: THREE.BufferGeometry[] = [];
+  for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) {
+    if (Math.abs(x) + Math.abs(z) > 3) continue;
+    const c = (x + z) % 2 ? 0x5e566e : 0x6a6280;
+    parts.push(part(box(1.9, 0.1, 1.9), c, [x * 2, 0.05 + ((x * 7 + z * 3) % 3) * 0.015, z * 2], [0, 0, 0]));
+  }
+  return merge(parts);
+}
+export function brazierGeo() {
+  return merge([
+    part(cyl(0.18, 0.28, 1.1, 6), 0x3a3248, [0, 0.55, 0]),
+    part(cyl(0.6, 0.3, 0.35, 8), 0x4a4058, [0, 1.25, 0]),
+    part(box(0.9, 0.1, 0.9), 0x2a2238, [0, 0.05, 0]),
+  ]);
+}
+export const flameGeo = () => merge([
+  part(cone(0.42, 0.9, 6), 0xff8a2a, [0, 1.75, 0]),
+  part(cone(0.26, 0.65, 6), 0xffd060, [0.05, 1.7, 0.02]),
+]);
+export function mushroomGeo() {
+  return merge([
+    part(cyl(0.3, 0.45, 2.2, 7), 0xd8cfc0, [0, 1.1, 0]),
+    part(dome(1.5, 9, 4), 0x3a8a96, [0, 2.1, 0], [0, 0, 0], [1, 0.6, 1]),
+    part(cyl(1.35, 1.4, 0.1, 9), 0x2a5a66, [0, 2.12, 0]),
+    part(ico(0.15), 0x9ff8ff, [0.6, 2.7, 0.4]),
+    part(ico(0.12), 0x9ff8ff, [-0.5, 2.6, -0.5]),
+    part(ico(0.12), 0x9ff8ff, [0.1, 2.95, -0.2]),
+  ]);
+}
+export function altarGeo() {
+  return merge([
+    part(box(2.4, 0.3, 2.4), 0x2a2236, [0, 0.15, 0]),
+    part(box(1.6, 1.0, 1.1), 0x3a2e48, [0, 0.8, 0]),
+    part(box(1.9, 0.18, 1.35), 0x241c30, [0, 1.38, 0]),
+    part(cone(0.12, 0.6, 4), 0x241c30, [-0.85, 1.75, 0.55]),
+    part(cone(0.12, 0.6, 4), 0x241c30, [0.85, 1.75, 0.55]),
+    part(cyl(0.06, 0.06, 0.25, 5), 0xe8dcc0, [-0.7, 1.6, -0.45]),
+    part(cyl(0.06, 0.06, 0.3, 5), 0xe8dcc0, [0.75, 1.62, -0.4]),
+    part(box(0.06, 0.6, 0.06), 0xff2a5a, [0, 0.8, 0.56]),
+    part(box(0.4, 0.06, 0.06), 0xff2a5a, [0, 0.95, 0.56]),
+  ]);
+}
+
 // ---- Welt: Biom-Requisiten ----
 export function deadTreeGeo() {
   const W = 0x5a4a52, D = 0x463a42;

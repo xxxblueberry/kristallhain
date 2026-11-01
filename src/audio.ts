@@ -1,6 +1,6 @@
 // Platzhalter-Sounds, rein synthetisch über Web Audio (keine Dateien).
-import { EV_HIT, EV_KILL, EV_XP, EV_HURT, EV_LEVEL, EV_BOOM, EV_SHOOT, EV_JUMP, EV_LAND, EV_CHAIN, EV_NOVA, EV_GOLD, EV_CHEST, EV_HEAL, EV_SHIELD, EV_REVIVE, EV_SLASH, EV_MAGNET, EV_BLINK, EV_BUFF, EV_POWER, EV_STRIDE, type Sim } from './core/sim';
-import { W_METEOR, W_PISTOL } from './core/data';
+import { EV_HIT, EV_KILL, EV_XP, EV_HURT, EV_LEVEL, EV_BOOM, EV_SHOOT, EV_JUMP, EV_LAND, EV_CHAIN, EV_NOVA, EV_GOLD, EV_CHEST, EV_HEAL, EV_SHIELD, EV_REVIVE, EV_SLASH, EV_MAGNET, EV_BLINK, EV_BUFF, EV_POWER, EV_FLAME, EV_BLOODSLASH, EV_ALTAR, EV_STRIDE, type Sim } from './core/sim';
+import { W_DEMON, W_METEOR, W_PISTOL } from './core/data';
 
 export class Sfx {
   private ctx: AudioContext | null = null;
@@ -99,6 +99,7 @@ export class Sfx {
         case EV_BOOM: if (this.ok('boom', 0.06)) { this.burst(0.35, 0.18, 500); this.tone('sine', 120, 40, 0.3, 0.16); } break;
         case EV_SHOOT:
           if (v[o + 1] === W_METEOR) { if (this.ok('met', 0.1)) this.burst(0.5, 0.05, 1500, 'bandpass'); }
+          else if (v[o + 1] === W_DEMON) { if (this.ok('demon', 0.2)) { this.tone('sawtooth', 110, 220, 0.35, 0.06); this.tone('sine', 330, 160, 0.4, 0.05); } }
           else if (v[o + 1] === W_PISTOL) { if (this.ok('pistol', 0.05)) { this.tone('square', 900, 200, 0.06, 0.05); this.burst(0.06, 0.07, 2500, 'bandpass'); } }
           else if (this.ok('shoot', 0.09)) this.burst(0.07, 0.05, 3000, 'highpass');
           break;
@@ -110,6 +111,9 @@ export class Sfx {
         case EV_SLASH: if (this.ok('slash', 0.06)) { this.burst(0.12, 0.09, 5000, 'highpass'); this.tone('sine', 1600, 500, 0.1, 0.04); } break;
         case EV_MAGNET: [660, 880, 1320].forEach((f, i) => this.tone('sine', f, f * 1.5, 0.3, 0.08, i * 0.05)); break;
         case EV_BLINK: if (this.ok('blink', 0.2)) { this.tone('triangle', 300, 1400, 0.25, 0.08); this.burst(0.2, 0.05, 3000, 'bandpass'); } break;
+        case EV_FLAME: if (this.ok('flame', 0.12)) this.burst(0.18, 0.05, 900, 'lowpass'); break;
+        case EV_BLOODSLASH: this.burst(0.3, 0.14, 700, 'lowpass'); this.tone('sawtooth', 160, 60, 0.25, 0.1); break;
+        case EV_ALTAR: [196, 185, 147, 110].forEach((f, i) => this.tone('sawtooth', f, f * 0.98, 0.35, 0.08, i * 0.12)); this.burst(0.6, 0.1, 400); break;
         case EV_BUFF: [440, 660, 880].forEach((f, i) => this.tone('sawtooth', f, f * 1.02, 0.18, 0.05, i * 0.04)); this.burst(0.25, 0.06, 4000, 'highpass'); break;
         case EV_POWER: [262, 392, 523, 784, 1047].forEach((f, i) => this.tone('triangle', f, f, 0.3, 0.1, i * 0.08)); break;
         case EV_HEAL: if (this.ok('heal', 0.1)) { this.tone('sine', 520, 780, 0.15, 0.08); this.tone('sine', 780, 1040, 0.15, 0.06, 0.08); } break;

@@ -1,14 +1,14 @@
 import './style.css';
 import './theme.css';
 import { Sim } from './core/sim';
-import { TICK, BOSSES } from './core/data';
+import { TICK, BOSSES, metaFor, profileNeed } from './core/data';
 import { View } from './render/view';
 import { Input } from './input';
 import { Sfx } from './audio';
 import { Music } from './music';
 import { UI } from './ui';
-import { loadSave, writeSave } from './save';
-import { createAssassin, createWanderer, loadAssassin, type AssassinParts } from './render/hero';
+import { loadSave, writeSave, addProfileXp } from './save';
+import { createSkin, loadAssassin, SKINS, type AssassinParts } from './render/hero';
 
 const isTouch = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 const lowQ = isTouch; // Handy: weniger Pixel, weniger Gegner, weniger Partikel
@@ -23,7 +23,7 @@ const music = new Music();
 let beatT = 0;
 
 const newSeed = () => Math.floor(Math.random() * 1e9);
-let sim = new Sim(newSeed(), enemyCap);
+let sim = new Sim(newSeed(), enemyCap, metaFor(save.profile.level));
 view.attach(sim);
 let state: 'menu' | 'run' | 'pause' | 'result' = 'menu';
 let acc = 0;
@@ -36,26 +36,29 @@ function applySettings() {
   view.numbersOn = save.settings.numbers;
   view.zoom = view.dist = save.settings.zoom;
   view.setTextures(save.settings.textures);
+  view.lampOn = save.settings.lantern;
   writeSave(save);
 }
 
 function toMenu() {
   state = 'menu';
   ui.showHud(false);
-  ui.showMain(save, isTouch, startRun, () => ui.showSettings(save, applySettings, toMenu), showSkins);
+  ui.showMain(save, isTouch, startRun, () => ui.showSettings(save, applySettings, toMenu), showSkins, () => ui.showProfile(save, toMenu));
 }
 
-// ---- Helden-Skins ----
+// ---- Helden-Skins (teils über Profil-Stufen freigeschaltet) ----
 let assassinParts: AssassinParts | null = null;
+const skinUnlocked = (id: string) => (SKINS.find((s) => s.id === id)?.level ?? 99) <= save.profile.level;
 function applySkin() {
-  if (save.settings.skin === 'assassin' && assassinParts) view.setSkin(createAssassin(assassinParts));
-  else view.setSkin(createWanderer());
+  if (!skinUnlocked(save.settings.skin)) save.settings.skin = 'assassin';
+  view.setSkin(createSkin(save.settings.skin, assassinParts));
 }
 function showSkins() {
   ui.showSkins(
     save.settings.skin,
-    (id) => id !== 'assassin' || !!assassinParts,
-    (id) => { save.settings.skin = id; writeSave(save); applySkin(); showSkins(); },
+    save.profile.level,
+    (id) => SKINS.find((s) => s.id === id)?.base !== 'assassin' || !!assassinParts,
+    (id) => { if (!skinUnlocked(id)) return; save.settings.skin = id; writeSave(save); applySkin(); showSkins(); },
     toMenu,
   );
 }
@@ -68,7 +71,7 @@ loadAssassin(`${import.meta.env.BASE_URL}models/assassin.glb`)
   .catch((e) => console.warn('Assassine konnte nicht geladen werden', e));
 
 function startRun() {
-  sim = new Sim(newSeed(), enemyCap);
+  sim = new Sim(newSeed(), enemyCap, metaFor(save.profile.level));
   view.attach(sim);
   view.pitchTarget = save.settings.pitch;
   view.zoom = save.settings.zoom;
@@ -120,13 +123,28 @@ function finish(won: boolean) {
   if (sim.time > save.bestTime) { save.bestTime = sim.time; newBest = true; }
   if (sim.kills > save.bestKills) { save.bestKills = sim.kills; newBest = true; }
   if (won) save.wins++;
+  // Profil-Erfahrung: Kills, Überlebenszeit, Bosse, Sieg
+  const gained = Math.round(sim.kills * 0.6 + sim.time * 1.2 + sim.bossKills * 150 + (won ? 800 : 0));
+  const before = save.profile.level;
+  const rewards = addProfileXp(save, gained);
   writeSave(save);
-  ui.showResult(sim, won, newBest, startRun, toMenu);
+  ui.showResult(sim, won, newBest, startRun, toMenu, {
+    gained, level: save.profile.level, levelsUp: save.profile.level - before, rewards,
+    xp: save.profile.xp, need: profileNeed(save.profile.level),
+  });
+}
+
+function toggleLamp() {
+  save.settings.lantern = !save.settings.lantern;
+  view.lampOn = save.settings.lantern;
+  writeSave(save);
 }
 
 input.onNav = (x, y) => ui.nav(x, y);
 input.onConfirm = () => ui.confirm();
 input.onBack = () => ui.back();
+input.onToggleLamp = toggleLamp;
+ui.lampBtn.addEventListener('click', toggleLamp);
 ui.onUiSound = (ok) => (ok ? sfx.ui() : sfx.deny());
 ui.pauseBtn.addEventListener('click', pause);
 // Touch: Zoom in drei Stufen durchschalten

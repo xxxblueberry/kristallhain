@@ -1,4 +1,6 @@
 // Lokales Speichern. Später austauschbar gegen iOS-Speicher / Cloud-Save – nur diese Datei ändern.
+import { PROFILE_REWARDS, profileNeed, type ProfileReward } from './core/data';
+
 export interface Settings {
   volume: number;
   shake: boolean;
@@ -9,6 +11,13 @@ export interface Settings {
   music: number;
   pitch: number;
   quality: 'hoch' | 'niedrig';
+  lantern: boolean;
+}
+
+// Profil: wächst über alle Läufe hinweg und schaltet Boni und Skins frei
+export interface Profile {
+  level: number;
+  xp: number;
 }
 
 export interface SaveData {
@@ -17,6 +26,7 @@ export interface SaveData {
   wins: number;
   runs: number;
   settings: Settings;
+  profile: Profile;
 }
 
 const KEY = 'kristallhain-save-v1';
@@ -27,7 +37,11 @@ const defaultQuality = (): 'hoch' | 'niedrig' =>
 
 const defaults = (): SaveData => ({
   bestTime: 0, bestKills: 0, wins: 0, runs: 0,
-  settings: { volume: 0.7, shake: true, numbers: true, zoom: 20, skin: 'assassin', textures: true, music: 0.6, pitch: 0.95, quality: defaultQuality() },
+  settings: {
+    volume: 0.7, shake: true, numbers: true, zoom: 20, skin: 'assassin', textures: true, music: 0.6, pitch: 0.95,
+    quality: defaultQuality(), lantern: true,
+  },
+  profile: { level: 1, xp: 0 },
 });
 
 export function loadSave(): SaveData {
@@ -36,7 +50,7 @@ export function loadSave(): SaveData {
     if (!raw) return defaults();
     const d = JSON.parse(raw) as Partial<SaveData>;
     const base = defaults();
-    return { ...base, ...d, settings: { ...base.settings, ...(d.settings ?? {}) } };
+    return { ...base, ...d, settings: { ...base.settings, ...(d.settings ?? {}) }, profile: { ...base.profile, ...(d.profile ?? {}) } };
   } catch {
     return defaults();
   }
@@ -48,4 +62,15 @@ export function writeSave(d: SaveData) {
   } catch {
     /* privater Modus o. ä. – Spiel läuft ohne Speichern weiter */
   }
+}
+
+// Profil-XP gutschreiben; gibt die neu freigeschalteten Belohnungen zurück
+export function addProfileXp(d: SaveData, xp: number): ProfileReward[] {
+  const p = d.profile, before = p.level;
+  p.xp += xp;
+  while (p.xp >= profileNeed(p.level)) {
+    p.xp -= profileNeed(p.level);
+    p.level++;
+  }
+  return PROFILE_REWARDS.filter((r) => r.level > before && r.level <= p.level);
 }

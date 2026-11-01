@@ -6,6 +6,7 @@ export class Input {
   onNav: (dx: number, dy: number) => void = () => {};
   onConfirm: () => void = () => {};
   onBack: () => void = () => {};
+  onToggleLamp: () => void = () => {};
 
   private keys = new Set<string>();
   private jumpQ = false;
@@ -35,6 +36,7 @@ export class Input {
         return;
       }
       if (e.code === 'Space') this.jumpQ = true;
+      if (e.code === 'KeyT') this.onToggleLamp();
       if (e.code === 'Escape' || e.code === 'KeyP') this.pauseQ = true;
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -126,6 +128,7 @@ export class Input {
         if (btn(4) || btn(5)) this.zoomAcc *= Math.exp(((btn(5) ? 1 : 0) - (btn(4) ? 1 : 0)) * 1.2 * dt);
         if (edge(0)) this.jumpQ = true;
         if (edge(9)) this.pauseQ = true;
+        if (edge(3)) this.onToggleLamp(); // Y / Dreieck
       }
       for (let i = 0; i < pad.buttons.length; i++) this.padPrev[i] = btn(i);
     }

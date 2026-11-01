@@ -1,6 +1,6 @@
 // HUD & Menüs als DOM-Overlay (wenige Elemente, ereignisarm aktualisiert).
 import type { Sim } from './core/sim';
-import { BUFFS, ENEMIES, ITEMS, MAX_SLOTS, PASSIVES, RARITIES, WEAPONS, W_RELICS } from './core/data';
+import { BUFFS, ENEMIES, ITEMS, MAX_SLOTS, PASSIVES, PROFILE_REWARDS, RARITIES, WEAPONS, W_RELICS, profileNeed, type ProfileReward } from './core/data';
 import { offerInfo, offerValid, type Offer } from './core/upgrades';
 import type { SaveData } from './save';
 import { SKINS } from './render/hero';
@@ -18,6 +18,7 @@ const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = '') =
 };
 
 export interface Btn { label: string; onClick: () => void; primary?: boolean; disabled?: boolean }
+export interface ProfileGain { gained: number; level: number; levelsUp: number; rewards: ProfileReward[]; xp: number; need: number }
 
 export class UI {
   screen: 'none' | 'main' | 'settings' | 'skins' | 'levelup' | 'shop' | 'chest' | 'pause' | 'result' = 'none';
@@ -26,6 +27,7 @@ export class UI {
   readonly jumpBtn: HTMLElement;
   readonly pauseBtn: HTMLElement;
   readonly zoomBtn: HTMLElement;
+  readonly lampBtn: HTMLElement;
   onUiSound: (ok: boolean) => void = () => {};
 
   private hud: HTMLElement;
@@ -69,6 +71,8 @@ export class UI {
     this.hud.appendChild(this.pauseBtn);
     this.zoomBtn = h('button', 'zoombtn', '🔍');
     if (isTouch) this.hud.appendChild(this.zoomBtn);
+    this.lampBtn = h('button', 'lampbtn', '🏮');
+    if (isTouch) this.hud.appendChild(this.lampBtn);
     this.joyBase = h('div', 'joybase');
     this.joyKnob = h('div', 'joyknob');
     this.joyBase.appendChild(this.joyKnob);
@@ -150,12 +154,14 @@ export class UI {
   }
 
   // ---------------- Bildschirme ----------------
-  showMain(save: SaveData, isTouch: boolean, onStart: () => void, onSettings: () => void, onSkins: () => void) {
+  showMain(save: SaveData, isTouch: boolean, onStart: () => void, onSettings: () => void, onSkins: () => void, onProfile: () => void) {
     const c = h('div', 'panel main');
     c.innerHTML = `<h1>Kristallhain</h1><p class="sub">Überlebe den verfluchten Hain – fünf Bosse, dann der Schattenfürst.</p>`;
     c.appendChild(this.button({ label: 'Lauf starten', onClick: onStart, primary: true }));
     const skin = SKINS.find((s) => s.id === save.settings.skin) ?? SKINS[0];
     c.appendChild(this.button({ label: `Held: ${skin.icon} ${skin.name}`, onClick: onSkins }));
+    const p = save.profile;
+    c.appendChild(this.button({ label: `Fortschritt · Profil-Stufe ${p.level}`, onClick: onProfile }));
     c.appendChild(this.button({ label: 'Einstellungen', onClick: onSettings }));
     const best = save.bestTime > 0 ? `Bestzeit ${fmtTime(save.bestTime)} · Rekord ${save.bestKills} Kills · ${save.wins} Siege` : 'Noch kein Lauf gespielt';
     c.appendChild(h('p', 'best', best));
@@ -189,6 +195,7 @@ export class UI {
     row('Grafik', s.quality === 'hoch' ? 'Hoch (Leuchten)' : 'Niedrig (schneller)', [{ label: 'Umschalten', onClick: () => { s.quality = s.quality === 'hoch' ? 'niedrig' : 'hoch'; onChange(); render(); } }]);
     row('Bildschirmwackeln', s.shake ? 'An' : 'Aus', [{ label: 'Umschalten', onClick: () => { s.shake = !s.shake; onChange(); render(); } }]);
     row('Schadenszahlen', s.numbers ? 'An' : 'Aus', [{ label: 'Umschalten', onClick: () => { s.numbers = !s.numbers; onChange(); render(); } }]);
+    row('Laterne (T)', s.lantern ? 'An' : 'Aus', [{ label: 'Umschalten', onClick: () => { s.lantern = !s.lantern; onChange(); render(); } }]);
     row('Boden-Texturen', s.textures ? 'An' : 'Aus', [{ label: 'Umschalten', onClick: () => { s.textures = !s.textures; onChange(); render(); } }]);
     c.appendChild(this.button({ label: 'Zurück', onClick: onBack, primary: true }));
     const keep = this.screen === 'settings' ? this.fi : -1;
@@ -197,16 +204,35 @@ export class UI {
     if (keep >= 0) { this.fi = Math.min(keep, this.focus.length - 1); this.applyFocus(); }
   }
 
-  showSkins(current: string, available: (id: string) => boolean, onPick: (id: string) => void, onBack: () => void) {
+  showProfile(save: SaveData, onBack: () => void) {
+    const p = save.profile, need = profileNeed(p.level);
+    const c = h('div', 'panel wide');
+    c.appendChild(h('h2', 'glow', `Profil-Stufe ${p.level}`));
+    c.appendChild(h('div', 'profbar', `<div style="width:${Math.min(100, (p.xp / need) * 100)}%"></div><span>${p.xp} / ${need} Erfahrung</span>`));
+    c.appendChild(h('p', 'sub', 'Jeder Lauf bringt Erfahrung: Kills, Überlebenszeit, Bosse und Siege.'));
+    const list = h('div', 'rewards');
+    for (const r of PROFILE_REWARDS) {
+      const got = r.level <= p.level;
+      list.innerHTML += `<div class="reward${got ? ' got' : ''}"><b>Stufe ${r.level}</b><span>${r.skin ? '🎭 ' : '✦ '}${r.text}</span><i>${got ? '✓' : '🔒'}</i></div>`;
+    }
+    c.appendChild(list);
+    c.appendChild(this.button({ label: 'Zurück', onClick: onBack, primary: true }));
+    this.open('settings', c, onBack);
+    this.openedAt = 0;
+  }
+
+  showSkins(current: string, level: number, available: (id: string) => boolean, onPick: (id: string) => void, onBack: () => void) {
     const c = h('div', 'panel wide');
     c.appendChild(h('h2', '', 'Held wählen'));
     const row = h('div', 'cards');
     for (const s of SKINS) {
-      const ok = available(s.id);
-      const e = h('button', 'card skin' + (s.id === current ? ' chosen' : '')) as HTMLButtonElement;
+      const locked = s.level > level;
+      const ok = !locked && available(s.id);
+      const e = h('button', 'card skin' + (s.id === current ? ' chosen' : '') + (locked ? ' locked' : '')) as HTMLButtonElement;
       e.dataset.nav = '1';
       e.disabled = !ok;
-      e.innerHTML = `<div class="ctype">${s.id === current ? '✓ Gewählt' : 'Held'}</div><div class="cicon">${s.icon}</div><div class="ctitle">${s.name}</div><div class="cdesc">${ok ? s.desc : 'lädt …'}</div>`;
+      const desc = locked ? `🔒 Ab Profil-Stufe ${s.level}` : ok ? s.desc : 'lädt …';
+      e.innerHTML = `<div class="ctype">${s.id === current ? '✓ Gewählt' : 'Held'}</div><div class="cicon">${s.icon}</div><div class="ctitle">${s.name}</div><div class="cdesc">${desc}</div>`;
       e.onclick = () => { if (!e.disabled) { this.onUiSound(true); onPick(s.id); } };
       row.appendChild(e);
     }
@@ -284,7 +310,7 @@ export class UI {
     this.openedAt = 0;
   }
 
-  showResult(sim: Sim, won: boolean, newBest: boolean, onRestart: () => void, onMenu: () => void) {
+  showResult(sim: Sim, won: boolean, newBest: boolean, onRestart: () => void, onMenu: () => void, prof?: ProfileGain) {
     const c = h('div', 'panel wide');
     c.appendChild(h('h2', won ? 'glow' : '', won ? 'Sieg! Der Hain ist befreit.' : 'Gefallen …'));
     if (newBest) c.appendChild(h('p', 'sub', '✨ Neue Bestleistung!'));
@@ -299,6 +325,10 @@ export class UI {
       dmg.innerHTML += `<div class="dmgrow"><span>${r.label}</span><div class="dmgbar"><div style="width:${(r.d / total) * 100}%"></div></div><span>${Math.round(r.d).toLocaleString('de-DE')}</span></div>`;
     }
     c.appendChild(dmg);
+    if (prof) {
+      c.appendChild(h('div', 'profbar', `<div style="width:${Math.min(100, (prof.xp / prof.need) * 100)}%"></div><span>+${prof.gained} Erfahrung · Profil-Stufe ${prof.level}${prof.levelsUp ? ` (+${prof.levelsUp})` : ''}</span>`));
+      for (const r of prof.rewards) c.appendChild(h('p', 'unlock', `🔓 Freigeschaltet: ${r.text}`));
+    }
     const bar = h('div', 'btnrow');
     bar.appendChild(this.button({ label: 'Nochmal', onClick: onRestart, primary: true }));
     bar.appendChild(this.button({ label: 'Hauptmenü', onClick: onMenu }));
@@ -437,6 +467,9 @@ export class UI {
       } else if (it.kind === 2) {
         c.strokeStyle = '#7fe8ff'; c.lineWidth = 2;
         c.beginPath(); c.arc(x, y, 4, 0, Math.PI * 2); c.stroke();
+      } else if (it.kind === 3) {
+        c.fillStyle = '#ff3a6a';
+        c.beginPath(); c.moveTo(x, y + 5); c.lineTo(x + 5, y - 4); c.lineTo(x - 5, y - 4); c.fill();
       } else {
         c.fillStyle = sim.gold >= sim.currentChestCost() ? '#f0b44c' : '#8a7a5a';
         c.fillRect(x - 3, y - 3, 6, 6);

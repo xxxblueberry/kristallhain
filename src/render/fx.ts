@@ -356,9 +356,12 @@ class Bolts {
 // ---------------- Katana-Hiebe (Sichelbogen) ----------------
 class Slashes {
   private pool: { m: THREE.Mesh; mat: THREE.MeshBasicMaterial; t: number; r: number }[] = [];
+  private arc: THREE.BufferGeometry;
+  private full = new THREE.RingGeometry(0.6, 1, 48).rotateX(-Math.PI / 2);
   constructor(scene: THREE.Scene) {
     // Bogen um lokales +Z (±1,2 rad), flach auf dem Boden
     const geo = new THREE.RingGeometry(0.72, 1, 28, 1, -Math.PI / 2 - 1.2, 2.4).rotateX(-Math.PI / 2);
+    this.arc = geo;
     for (let i = 0; i < 8; i++) {
       const mat = new THREE.MeshBasicMaterial({ color: 0xffc8e6, transparent: true, depthWrite: false, side: THREE.DoubleSide });
       const m = new THREE.Mesh(geo, mat);
@@ -368,12 +371,22 @@ class Slashes {
       this.pool.push({ m, mat, t: 0, r: 1 });
     }
   }
+  // voller Kreis (Blut-Langschwert)
+  spawnFull(x: number, y: number, z: number, r: number, color: number) {
+    const p = this.spawn(x, y, z, 0, r);
+    p.m.geometry = this.full;
+    p.mat.color.setHex(color);
+  }
+
   spawn(x: number, y: number, z: number, a: number, r: number) {
     const p = this.pool.find((q) => !q.m.visible) ?? this.pool[0];
+    p.m.geometry = this.arc;
+    p.mat.color.setHex(0xffc8e6);
     p.m.position.set(x, y, z);
     p.m.rotation.y = a;
     p.t = 0; p.r = r;
     p.m.visible = true;
+    return p;
   }
   update(dt: number) {
     for (const p of this.pool) {

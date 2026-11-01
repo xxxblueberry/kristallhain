@@ -7,9 +7,10 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import {
   Sim, EV_HIT, EV_KILL, EV_XP, EV_HURT, EV_LEVEL, EV_BOOM, EV_JUMP, EV_LAND, EV_CHAIN, EV_NOVA, EV_GOLD, EV_CHEST,
-  EV_HEAL, EV_SHIELD, EV_REVIVE, EV_SHOOT, EV_SLASH, EV_MAGNET, EV_BLINK, EV_BUFF, EV_POWER, EV_STRIDE, K_BUFF, P_SPEAR, P_SHARD, P_BULLET, B_METEOR, B_ENEMY, B_PLAYER, B_STAR,
+  EV_HEAL, EV_SHIELD, EV_REVIVE, EV_SHOOT, EV_SLASH, EV_MAGNET, EV_BLINK, EV_BUFF, EV_POWER, EV_FLAME, EV_BLOODSLASH, EV_ALTAR,
+  EV_STRIDE, K_BUFF, P_SKULL, B_DEMON, MAX_PATCH, P_SPEAR, P_SHARD, P_BULLET, B_METEOR, B_ENEMY, B_PLAYER, B_STAR,
 } from '../core/sim';
-import { ENEMIES, MAX_ENEMIES, MAX_PICK, MAX_PROJ, W_BLADES, W_PISTOL, W_KATANA, I_BUBBLE, BUFFS, RARITIES } from '../core/data';
+import { ENEMIES, MAX_ENEMIES, MAX_PICK, MAX_PROJ, W_BLADES, W_PISTOL, W_KATANA, W_BLOODSWORD, W_DEMON, I_BUBBLE, BUFFS, RARITIES } from '../core/data';
 import { bladeLayout } from '../core/weapons';
 import * as M from './models';
 import { World } from './world';
@@ -17,7 +18,7 @@ import { createWanderer, type HeroSkin } from './hero';
 import { Fx, setM } from './fx';
 import { terrainTex } from './world';
 
-const ENEMY_CAP = [1400, 700, 400, 500, 300, 2, 2, 2, 2, 2, 2];
+const ENEMY_CAP = [1400, 700, 400, 500, 300, 2, 2, 2, 2, 2, 2, 500, 700, 300];
 const MAX_BARS = 64;
 
 // Lambert mit Treffer-Blitz pro Instanz (Attribut aFlash): >0 weiß aufblitzen, <0 goldener Elite-Glanz
@@ -110,6 +111,13 @@ export class View {
   private coins: THREE.InstancedMesh;
   private hearts: THREE.InstancedMesh;
   private magnets: THREE.InstancedMesh;
+  private patches: THREE.InstancedMesh;
+  private patchLife: THREE.InstancedBufferAttribute;
+  private bloodSword: THREE.Mesh;
+  private bloodT = 1;
+  private lamp: THREE.PointLight;
+  private lampMesh: THREE.Mesh;
+  lampOn = true;
   private buffMeshes: THREE.InstancedMesh[];
   private katana: THREE.Mesh;
   private katanaT = 1; // 0..1 Fortschritt des Schwungs
@@ -169,7 +177,8 @@ export class View {
     this.scene.add(sun);
 
     const flashMat = flashMaterial();
-    const geos = [M.beetleGeo(), M.wolfGeo(), M.shamanGeo(), M.wispGeo(), M.golemGeo(), M.hydraGeo(), M.titanGeo(), M.kingGeo(), M.witchGeo(), M.queenGeo(), M.darkLordGeo()];
+    const geos = [M.beetleGeo(), M.wolfGeo(), M.shamanGeo(), M.wispGeo(), M.golemGeo(), M.hydraGeo(), M.titanGeo(), M.kingGeo(), M.witchGeo(), M.queenGeo(), M.darkLordGeo(),
+      M.skeletonGeo(), M.batGeo(), M.shadeGeo()];
     geos.forEach((g, t) => {
       const m = inst(g, flashMat, ENEMY_CAP[t], true);
       this.enemyMesh.push(m);
@@ -182,8 +191,47 @@ export class View {
 
     const plain = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     const glow = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0xffffff, emissiveIntensity: 0.35 });
-    // Reihenfolge = P_SPEAR, P_SHARD, P_METEOR, P_BULLET, P_STAR
-    this.proj = [inst(M.spearGeo(), plain, MAX_PROJ), inst(M.shardGeo(), glow, MAX_PROJ), inst(M.meteorGeo(), glow, 64), inst(M.bulletGeo(), glow, MAX_PROJ), inst(M.starGeo(), glow, 64)];
+    // Reihenfolge = P_SPEAR, P_SHARD, P_METEOR, P_BULLET, P_STAR, P_SKULL, P_BLOODWAVE
+    const demonGlow = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x8a2aff, emissiveIntensity: 0.7 });
+    const bloodGlow = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0xff1030, emissiveIntensity: 0.9 });
+    this.proj = [
+      inst(M.spearGeo(), plain, MAX_PROJ), inst(M.shardGeo(), glow, MAX_PROJ), inst(M.meteorGeo(), glow, 64), inst(M.bulletGeo(), glow, MAX_PROJ),
+      inst(M.starGeo(), glow, 64), inst(M.skullGeo(), demonGlow, 128), inst(M.bloodWaveGeo(), bloodGlow, 256),
+    ];
+    // Brandflächen: flackernde Glut-Scheiben (additiv)
+    this.patches = new THREE.InstancedMesh(
+      new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2),
+      new THREE.ShaderMaterial({
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uTime: { value: 0 } },
+        vertexShader: 'attribute float aLife; varying vec2 vUv; varying float vL; varying float vSeed; void main(){ vUv = uv; vL = aLife; vSeed = instanceMatrix[3].x; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position,1.0); }',
+        fragmentShader: `uniform float uTime; varying vec2 vUv; varying float vL; varying float vSeed;
+          void main(){
+            float d = length(vUv - 0.5) * 2.0;
+            float n = sin(atan(vUv.y - 0.5, vUv.x - 0.5) * 7.0 + uTime * 6.0 + vSeed) * 0.08 + sin(uTime * 11.0 + vSeed * 3.0) * 0.05;
+            float a = smoothstep(1.0, 0.35, d + n) * vL;
+            vec3 c = mix(vec3(1.0, 0.25, 0.05), vec3(1.0, 0.8, 0.3), smoothstep(0.7, 0.0, d));
+            gl_FragColor = vec4(c * a, a * 0.85);
+          }`,
+      }),
+      MAX_PATCH,
+    );
+    this.patchLife = new THREE.InstancedBufferAttribute(new Float32Array(MAX_PATCH), 1);
+    this.patches.geometry.setAttribute('aLife', this.patchLife);
+    this.patches.frustumCulled = false;
+    this.patches.count = 0;
+    this.patches.renderOrder = 4;
+    this.scene.add(this.patches);
+    // Blut-Langschwert am Rücken, schwingt bei jedem Hieb einmal um den Helden
+    this.bloodSword = new THREE.Mesh(M.bloodSwordGeo(), bloodGlow);
+    this.bloodSword.visible = false;
+    this.scene.add(this.bloodSword);
+    // Laterne an der Hüfte: warmes Licht, das den Weg erhellt
+    this.lamp = new THREE.PointLight(0xffb070, 0, 17, 1.4);
+    this.lamp.position.set(0.42, 1.15, 0.2);
+    const lanternMesh = new THREE.Mesh(M.lanternGeo(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0xffa040, emissiveIntensity: 0.9 }));
+    lanternMesh.position.copy(this.lamp.position);
+    this.lampMesh = lanternMesh;
+    this.heroRoot.add(this.lamp, lanternMesh);
     this.blades = inst(M.bladeGeo(), glow, 16);
     this.orbs = inst(M.orbGeo(), glow, MAX_PICK);
     this.coins = inst(M.coinGeo(), glow, MAX_PICK);
@@ -346,7 +394,8 @@ export class View {
           break;
         case EV_BOOM: {
           const r = v[o + 4], kind = v[o + 5];
-          const col = kind === B_METEOR ? 0xffa07a : kind === B_ENEMY ? 0xff9fb4 : kind === B_PLAYER ? 0xa8e6ff : kind === B_STAR ? 0xfff0a0 : 0xffffff;
+          const col = kind === B_METEOR ? 0xffa07a : kind === B_ENEMY ? 0xff9fb4 : kind === B_PLAYER ? 0xa8e6ff : kind === B_STAR ? 0xfff0a0 : kind === B_DEMON ? 0xb03aff : 0xffffff;
+          if (kind === B_DEMON) P.spawn(x, y + 0.5, z, 16, c.setHex(0xff5ad0), r * 2.2, 0.22, 0.5, 5);
           P.spawn(x, y + 0.3, z, Math.min(30, 4 + r * 3), c.setHex(col), r * 2, 0.2, 0.55, 6);
           this.fx.rings.spawn(x, y, z, r * 0.3, r, col, 0.35);
           this.addTrauma(kind === B_METEOR || kind === B_STAR ? 0.1 : kind === B_ENEMY ? Math.min(0.3, r * 0.025) : 0.2);
@@ -372,6 +421,30 @@ export class View {
           this.fx.rings.spawn(x, y, z, 1, 30, 0xff4d6d, 0.7);
           this.fx.rings.spawn(x, y, z, 0.5, 18, 0xffffff, 0.5);
           P.spawn(x, y + 1, z, 30, c.setHex(0xff8fa8), 8, 0.15, 0.7, 5);
+          break;
+        case EV_FLAME: {
+          // Flammenkegel aus Partikeln
+          const a0 = v[o + 4], len = v[o + 5], half = v[o + 6];
+          for (let k = 0; k < 7; k++) {
+            const d = 0.6 + Math.random() * len, a = a0 + (Math.random() - 0.5) * 2 * half * (d / len);
+            const col = Math.random() < 0.3 ? 0xffe070 : Math.random() < 0.6 ? 0xff7a20 : 0xff3a10;
+            P.spawn(x + Math.sin(a) * d, y - 0.2 + Math.random() * 0.6, z + Math.cos(a) * d, 1, c.setHex(col), 1.2, 0.26 - d / len * 0.1, 0.32, 1.8);
+          }
+          break;
+        }
+        case EV_BLOODSLASH: {
+          const r = v[o + 4];
+          this.fx.slashes.spawnFull(x, y - 0.3, z, r, 0xff2040);
+          this.fx.rings.spawn(x, y - 0.8, z, r * 0.3, r * 1.1, 0x8a0a20, 0.35);
+          P.spawn(x, y, z, 26, c.setHex(0xd0102a), r * 1.6, 0.16, 0.45, 3);
+          this.bloodT = 0;
+          this.addTrauma(0.22);
+          break;
+        }
+        case EV_ALTAR:
+          this.fx.rings.spawn(x, y, z, 0.5, 12, 0xff2a5a, 0.8);
+          P.spawn(x, y + 2, z, 50, c.setHex(0xff2a5a), 8, 0.2, 1.1, 8);
+          this.addTrauma(0.4);
           break;
         case EV_BUFF: {
           const col = BUFFS[v[o + 4]].color;
@@ -517,7 +590,8 @@ export class View {
     this.barBg.instanceMatrix.needsUpdate = true; this.barFill.instanceMatrix.needsUpdate = true;
 
     // Projektile
-    const pc = [0, 0, 0, 0, 0];
+    const pc = [0, 0, 0, 0, 0, 0, 0];
+    const caps = [MAX_PROJ, MAX_PROJ, 64, MAX_PROJ, 64, 128, 256];
     const pa = this.proj.map((m) => m.instanceMatrix.array as Float32Array);
     for (let i = 0; i < sim.qHigh; i++) {
       if (!sim.qAlive[i]) continue;
@@ -525,10 +599,62 @@ export class View {
       const x = sim.qpx[i] + (sim.qx[i] - sim.qpx[i]) * alpha;
       const y = sim.qpy[i] + (sim.qy[i] - sim.qpy[i]) * alpha;
       const z = sim.qpz[i] + (sim.qz[i] - sim.qpz[i]) * alpha;
-      const straight = kind === P_SPEAR || kind === P_SHARD || kind === P_BULLET;
-      const yaw = straight ? Math.atan2(sim.qvx[i], sim.qvz[i]) : this.time * 3 + i;
-      const s = straight ? 1 : sim.qr[i] / 3.5 + 0.3;
-      if (straight || pc[kind] < 64) setM(pa[kind], pc[kind]++ * 16, x, y, z, yaw, s, s, s);
+      const tumble = kind === 2 || kind === 4; // Meteor, Stern drehen sich
+      const yaw = tumble ? this.time * 3 + i : Math.atan2(sim.qvx[i], sim.qvz[i]);
+      let s = tumble ? sim.qr[i] / 3.5 + 0.3 : 1;
+      if (kind === P_SKULL) {
+        s = 0.8 + sim.qr[i] * 0.15;
+        // lila Flammenschweif
+        if (Math.random() < 0.7) this.fx.particles.spawn(x, y, z, 1, this.c.setHex(Math.random() < 0.5 ? 0xb03aff : 0xff5ad0), 0.6, 0.16, 0.4, 1.2);
+      }
+      if (pc[kind] < caps[kind]) setM(pa[kind], pc[kind]++ * 16, x, y, z, yaw, s, s, s);
+    }
+
+    // Brandflächen
+    const fa = this.patches.instanceMatrix.array as Float32Array, fl = this.patchLife.array as Float32Array;
+    let nf = 0;
+    for (let i = 0; i < MAX_PATCH; i++) {
+      if (!sim.fAlive[i]) continue;
+      const k = sim.flife[i] / sim.fmax[i];
+      const r = sim.fr[i] * (k > 0.9 ? (1 - k) * 10 : 1);
+      setM(fa, nf * 16, sim.fx_[i], T.height(sim.fx_[i], sim.fz_[i]) + 0.15, sim.fz_[i], 0, r, 1, r);
+      fl[nf++] = Math.min(1, k * 3);
+      if (dt > 0 && Math.random() < 0.35) {
+        const a = Math.random() * 6.283, d = Math.random() * sim.fr[i];
+        this.fx.particles.spawn(sim.fx_[i] + Math.sin(a) * d, T.height(sim.fx_[i], sim.fz_[i]) + 0.2, sim.fz_[i] + Math.cos(a) * d, 1,
+          this.c.setHex(Math.random() < 0.5 ? 0xff7a20 : 0xffc040), 0.4, 0.12, 0.6, 2.5);
+      }
+    }
+    this.patches.count = nf;
+    this.patches.instanceMatrix.needsUpdate = true;
+    this.patchLife.needsUpdate = true;
+    (this.patches.material as THREE.ShaderMaterial).uniforms.uTime.value = this.time;
+
+    // Funken über Feuerschalen in der Nähe
+    if (this.world && dt > 0) {
+      for (const [bx, by, bz] of this.world.braziers) {
+        if (Math.abs(bx - this.camT.x) > 45 || Math.abs(bz - this.camT.z) > 45 || Math.random() > 0.25) continue;
+        this.fx.particles.spawn(bx + (Math.random() - 0.5) * 0.5, by, bz + (Math.random() - 0.5) * 0.5, 1, this.c.setHex(0xffa040), 0.5, 0.1, 0.9, 3);
+      }
+    }
+
+    // Laterne flackert leicht
+    this.lamp.intensity = this.lampOn ? 16 * (0.92 + 0.05 * Math.sin(this.time * 13) + 0.03 * Math.sin(this.time * 7.7)) : 0;
+    this.lampMesh.visible = this.lampOn;
+
+    // Blut-Langschwert: auf dem Rücken, beim Hieb eine volle Drehung um den Helden
+    const hasBlood = sim.weapons.some((w) => w.id === W_BLOODSWORD);
+    this.bloodSword.visible = hasBlood;
+    if (hasBlood) {
+      this.bloodT = Math.min(1, this.bloodT + dt / 0.28);
+      if (this.bloodT < 1) {
+        const e = 1 - Math.pow(1 - this.bloodT, 2);
+        this.bloodSword.position.set(hx, hy + 1.1, hz);
+        this.bloodSword.rotation.set(0.15, this.heroYaw + e * Math.PI * 2, 0, 'YXZ');
+      } else {
+        this.bloodSword.position.set(hx - Math.sin(this.heroYaw) * 0.35, hy + 0.5 + run, hz - Math.cos(this.heroYaw) * 0.35);
+        this.bloodSword.rotation.set(-1.25, this.heroYaw + Math.PI, 0.3, 'YXZ');
+      }
     }
     this.proj.forEach((m, k) => { m.count = pc[k]; m.instanceMatrix.needsUpdate = true; });
 

@@ -5,8 +5,9 @@ import { HALF, STEP_H, GRID_SIZE, GRID_SEGS } from '../core/terrain';
 import { Rng } from '../core/rng';
 import {
   treeGeo, rockGeo, flowerGeo, crystalGeo, shrineGeo, chestGeo, deadTreeGeo, pillarGeo, crystalClusterGeo, obeliskGeo, graveGeo, powerShrineGeo,
+  wallGeo, floorGeo, brazierGeo, flameGeo, mushroomGeo, altarGeo,
 } from './models';
-import { POWER_TIME } from '../core/sim';
+import { POWER_TIME, ALTAR_TIME, PROP_BRAZIER } from '../core/sim';
 // je Höhenstufe eine Wiesenfarbe; höhere Ebenen werden kühler (Mint/Türkis), Klippen bleiben lila
 // gedämpfte Dämmerungs-Palette (dunkler, weniger verspielt)
 const GRASS = ['#6f9a7c', '#76a080', '#7ea584', '#86a785', '#8ea585', '#84a487', '#7a9f8b', '#72998f', '#6c9394', '#6f8d9c', '#7a8aa2', '#8690aa', '#959bb4'].map((c) => new THREE.Color(c));
@@ -80,6 +81,9 @@ export class World {
   private shrines: THREE.Mesh[] = [];
   private chests: THREE.Mesh[] = [];
   private power: { base: THREE.Mesh; ring: THREE.Mesh; ringMat: THREE.MeshBasicMaterial; rune: THREE.Mesh }[] = [];
+  private altars: { base: THREE.Mesh; orb: THREE.Mesh }[] = [];
+  private flameMat!: THREE.MeshLambertMaterial;
+  braziers: [number, number, number][] = []; // für Funken in der View
   private usedMat = new THREE.MeshLambertMaterial({ color: 0x9a94a8, flatShading: true });
   private disposables: { dispose(): void }[] = [];
   private windTime = { value: 0 };
@@ -173,9 +177,22 @@ export class World {
     // Bäume & Felsen kommen aus der Simulation (dort mit Kollision)
     // Reihenfolge = PROP_* in sim.ts
     const glowMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x6a3aa8, emissiveIntensity: 0.9 }));
-    const geos = [treeGeo(0xa86a8c, 0xbc84a2), treeGeo(0x4c8a80, 0x64a094), rockGeo(), deadTreeGeo(), pillarGeo(), crystalClusterGeo(), obeliskGeo(), graveGeo()];
-    const mats = [treeMat, treeMat, mat, treeMat, mat, glowMat, mat, mat];
+    const mushMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x1a5a66, emissiveIntensity: 0.8 }));
+    const geos: (THREE.BufferGeometry | null)[] = [
+      treeGeo(0xa86a8c, 0xbc84a2), treeGeo(0x4c8a80, 0x64a094), rockGeo(), deadTreeGeo(), pillarGeo(), crystalClusterGeo(),
+      obeliskGeo(), graveGeo(), wallGeo(), null, floorGeo(), brazierGeo(), mushroomGeo(),
+    ];
+    const mats = [treeMat, treeMat, mat, treeMat, mat, glowMat, mat, mat, mat, mat, mat, mat, mushMat];
+    // Flammen der Feuerschalen: eigenes leuchtendes Mesh, flackert über die Materialstärke
+    const braziers = this.sim.props.filter((p) => p.kind === PROP_BRAZIER);
+    this.flameMat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0xff7a20, emissiveIntensity: 1.4 }));
+    const flames = new THREE.InstancedMesh(this.track(flameGeo()), this.flameMat, Math.max(1, braziers.length));
+    braziers.forEach((p, i) => flames.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z)));
+    flames.count = braziers.length;
+    this.group.add(flames);
+    this.braziers = braziers.map((p) => [p.x, p.y + 1.9, p.z] as [number, number, number]);
     geos.forEach((g, kind) => {
+      if (!g) return;
       const list = this.sim.props.filter((p) => p.kind === kind);
       const mesh = new THREE.InstancedMesh(this.track(g), mats[kind], Math.max(1, list.length));
       const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
@@ -236,6 +253,9 @@ export class World {
     const ringGeo = this.track(new THREE.RingGeometry(2.4, 2.9, 40).rotateX(-Math.PI / 2));
     const runeGeo = this.track(new THREE.OctahedronGeometry(0.45).scale(0.7, 1.5, 0.7));
     const runeMat = this.track(new THREE.MeshLambertMaterial({ color: 0x7fe8ff, emissive: 0x7fe8ff, emissiveIntensity: 0.9, flatShading: true }));
+    const ag = this.track(altarGeo());
+    const orbGeo = this.track(new THREE.IcosahedronGeometry(0.38, 1));
+    const orbMat = this.track(new THREE.MeshLambertMaterial({ color: 0xff2a5a, emissive: 0xff1a4a, emissiveIntensity: 1.2, flatShading: true }));
     for (const it of this.sim.interact) {
       if (it.kind === 0) {
         const m = new THREE.Mesh(sg, mat);
@@ -251,6 +271,15 @@ export class World {
         m.rotation.y = (it.x * 13.37) % (Math.PI * 2);
         this.chests.push(m);
         this.group.add(m);
+      } else if (it.kind === 3) {
+        // Beschwörungsaltar mit rot glühender Kugel
+        const base = new THREE.Mesh(ag, mat);
+        base.position.set(it.x, it.y, it.z);
+        base.rotation.y = (it.z * 7.1) % (Math.PI * 2);
+        const orb = new THREE.Mesh(orbGeo, orbMat);
+        orb.position.set(it.x, it.y + 2.1, it.z);
+        this.altars.push({ base, orb });
+        this.group.add(base, orb);
       } else {
         // Machtschrein: Steinkreis, Lade-Ring am Boden, schwebende Rune
         const base = new THREE.Mesh(pg, mat);
@@ -280,8 +309,18 @@ export class World {
       }
       mesh.instanceMatrix.needsUpdate = true;
     }
-    let si = 0, ci = 0, pi = 0;
+    if (this.flameMat) this.flameMat.emissiveIntensity = 1.3 + Math.sin(time * 13) * 0.15 + Math.sin(time * 7.3) * 0.15;
+    let si = 0, ci = 0, pi = 0, ai = 0;
     for (const it of this.sim.interact) {
+      if (it.kind === 3) {
+        const a = this.altars[ai++];
+        a.orb.visible = !it.used;
+        if (it.used) { if (a.base.material !== this.usedMat) a.base.material = this.usedMat; continue; }
+        const k = Math.min(1, it.hold / ALTAR_TIME);
+        a.orb.position.y = it.y + 2.1 + Math.sin(time * 2.5 + it.x) * 0.15;
+        a.orb.scale.setScalar(1 + k * 0.8 + Math.sin(time * 5) * 0.06);
+        continue;
+      }
       if (it.kind === 0) {
         const top = this.shrineTops[si], base = this.shrines[si++];
         top.visible = !it.used;

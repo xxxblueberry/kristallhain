@@ -15,16 +15,27 @@ export interface HeroSkin {
   dispose(): void;
 }
 
-export interface SkinDef { id: string; name: string; icon: string; desc: string }
+// Skins: Grundmodell + Farbtönung (+ optional Glühen); "level" = nötige Profil-Stufe
+export interface SkinDef {
+  id: string; name: string; icon: string; desc: string;
+  base: 'assassin' | 'wanderer'; level: number; tint?: number; glow?: number;
+}
 export const SKINS: SkinDef[] = [
-  { id: 'wanderer', name: 'Kristall-Wanderin', icon: '🧙', desc: 'Die Heldin aus dem Kristallhain' },
-  { id: 'assassin', name: 'Schatten-Assassine', icon: '🗡️', desc: 'Lautlos, mit glühenden Augen' },
+  { id: 'assassin', base: 'assassin', level: 1, name: 'Schatten-Assassine', icon: '🗡️', desc: 'Lautlos, mit glühenden Augen' },
+  { id: 'wanderer', base: 'wanderer', level: 1, name: 'Kristall-Wanderin', icon: '🧙', desc: 'Die Heldin aus dem Kristallhain' },
+  { id: 'assassin_blood', base: 'assassin', level: 3, tint: 0xff8a8a, name: 'Blutmond-Assassine', icon: '🩸', desc: 'Getränkt im Licht des Blutmonds' },
+  { id: 'wanderer_shadow', base: 'wanderer', level: 5, tint: 0x8a7ab8, name: 'Schatten-Wanderin', icon: '🌑', desc: 'Vom Fluch des Hains gezeichnet' },
+  { id: 'assassin_frost', base: 'assassin', level: 7, tint: 0xa8dcff, glow: 0x0a2a44, name: 'Frost-Assassine', icon: '❄️', desc: 'Kalt wie die Gipfel' },
+  { id: 'assassin_gold', base: 'assassin', level: 10, tint: 0xffe08a, glow: 0x2a1a00, name: 'Gold-Assassine', icon: '👑', desc: 'Für die, die alles gesehen haben' },
+  { id: 'assassin_demon', base: 'assassin', level: 15, tint: 0xff5a4a, glow: 0x3a0606, name: 'Dämonen-Assassine', icon: '😈', desc: 'Ein Pakt mit dem Schattenfürsten' },
 ];
 
 // Lambert mit Treffer-Blitz über ein Uniform (für einzelne Meshes statt Instanzen)
-function flashUniformMaterial() {
+function flashUniformMaterial(def?: SkinDef) {
   const uFlash = { value: 0 };
   const m = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  if (def?.tint) m.color.setHex(def.tint);
+  if (def?.glow) m.emissive.setHex(def.glow);
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uFlash = uFlash;
     sh.fragmentShader = 'uniform float uFlash;\n' +
@@ -34,9 +45,15 @@ function flashUniformMaterial() {
   return { m, uFlash };
 }
 
+// Skin nach ID bauen (Assassinen-Skins brauchen das geladene Modell, sonst Wanderin als Ersatz)
+export function createSkin(id: string, parts: AssassinParts | null): HeroSkin {
+  const def = SKINS.find((s) => s.id === id) ?? SKINS[0];
+  return def.base === 'assassin' && parts ? createAssassin(parts, def) : createWanderer(def.base === 'wanderer' ? def : undefined);
+}
+
 // ---------------- Kristall-Wanderin (Code-Figur) ----------------
-export function createWanderer(): HeroSkin {
-  const { m, uFlash } = flashUniformMaterial();
+export function createWanderer(def?: SkinDef): HeroSkin {
+  const { m, uFlash } = flashUniformMaterial(def);
   const geo = heroGeo();
   const root = new THREE.Group();
   root.add(new THREE.Mesh(geo, m));
@@ -113,8 +130,8 @@ export async function loadAssassin(url: string): Promise<AssassinParts> {
   return out;
 }
 
-export function createAssassin(parts: AssassinParts): HeroSkin {
-  const { m, uFlash } = flashUniformMaterial();
+export function createAssassin(parts: AssassinParts, def?: SkinDef): HeroSkin {
+  const { m, uFlash } = flashUniformMaterial(def);
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);

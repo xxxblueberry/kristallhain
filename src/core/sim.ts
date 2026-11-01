@@ -5,9 +5,10 @@ import { Terrain, HALF, WORLD } from './terrain';
 import { Grid } from './grid';
 import {
   ENEMIES, PASSIVES, ITEMS, RARITIES, MAX_ENEMIES, MAX_PROJ, MAX_PICK, MAX_TELE, BOSSES, FINAL_BOSS, ELITE, W_RELICS,
-  E_BEETLE, E_WOLF, E_SHAMAN, E_WISP, E_GOLEM, E_HYDRA, E_TITAN, E_KING, E_WITCH, E_QUEEN, E_DARK, W_SPEAR, baseStats, type Stats,
+  E_BEETLE, E_WOLF, E_SHAMAN, E_WISP, E_GOLEM, E_HYDRA, E_TITAN, E_KING, E_WITCH, E_QUEEN, E_DARK, W_SPEAR, W_INFERNO, W_DEMON,
+  baseStats, type Stats,
   I_THORNS, I_POPBERRY, I_VAMPIRE, I_FROST, I_SOULJAR, I_BUBBLE, I_THUNDERBOOTS, I_BIGHEART, I_PHOENIX, I_STARFALL,
-  I_STORMRING, I_BLOODCRYSTAL, I_HUNTER, I_MIDAS, I_SKULL, BUFFS,
+  I_STORMRING, I_BLOODCRYSTAL, I_HUNTER, I_MIDAS, I_SKULL, BUFFS, E_SKELETON, E_BAT, E_SHADE, noMeta, type MetaBonus,
 } from './data';
 import { updateWeapons, newWeapon, type WeaponState } from './weapons';
 import { genOffers, applyOffer, offerValid, offerInfo, type Offer } from './upgrades';
@@ -15,14 +16,16 @@ import { genOffers, applyOffer, offerValid, offerInfo, type Offer } from './upgr
 // Ereignisse für Rendering/Audio: [typ, a, b, c, d, e, f, g]
 export const EV_HIT = 1, EV_KILL = 2, EV_XP = 3, EV_HURT = 4, EV_LEVEL = 5, EV_BOOM = 6, EV_SHOOT = 7,
   EV_JUMP = 8, EV_LAND = 9, EV_CHAIN = 10, EV_NOVA = 11, EV_GOLD = 12, EV_CHEST = 13, EV_HEAL = 14, EV_SHIELD = 15, EV_REVIVE = 16,
-  EV_MAGNET = 17, EV_SLASH = 18, EV_BLINK = 19, EV_BUFF = 20, EV_POWER = 21;
+  EV_MAGNET = 17, EV_SLASH = 18, EV_BLINK = 19, EV_BUFF = 20, EV_POWER = 21, EV_FLAME = 22, EV_BLOODSLASH = 23, EV_ALTAR = 24;
 export const EV_STRIDE = 8;
 const MAX_EV = 6000;
 
 // BOOM-Arten (für Farbe/Wackeln)
-export const B_DEATH = 0, B_ENEMY = 1, B_METEOR = 2, B_PLAYER = 3, B_STAR = 4;
+export const B_DEATH = 0, B_ENEMY = 1, B_METEOR = 2, B_PLAYER = 3, B_STAR = 4, B_DEMON = 5;
 
-export const P_SPEAR = 0, P_SHARD = 1, P_METEOR = 2, P_BULLET = 3, P_STAR = 4;
+export const P_SPEAR = 0, P_SHARD = 1, P_METEOR = 2, P_BULLET = 3, P_STAR = 4, P_SKULL = 5, P_BLOODWAVE = 6;
+export const MAX_PATCH = 96;
+export const ALTAR_TIME = 1.2;
 export const T_CIRCLE = 0, T_LINE = 1;
 export const SHRINE_TIME = 0.5;
 export const K_XP = 0, K_GOLD = 1, K_HEART = 2, K_MAGNET = 3, K_BUFF = 4; // K_BUFF + 0..2 = Powerups
@@ -35,13 +38,15 @@ const dmgScale = (t: number) => 1 + (t / 60) * 0.12;
 const speedScale = (t: number) => 1 + Math.min(0.3, t / 2400);
 
 export const PROP_TREE_PINK = 0, PROP_TREE_MINT = 1, PROP_ROCK = 2, PROP_DEADTREE = 3, PROP_PILLAR = 4,
-  PROP_CRYSTAL = 5, PROP_OBELISK = 6, PROP_GRAVE = 7;
-export const PROP_KINDS = 8;
+  PROP_CRYSTAL = 5, PROP_OBELISK = 6, PROP_GRAVE = 7, PROP_WALL = 8, PROP_COLLIDER = 9, PROP_FLOOR = 10,
+  PROP_BRAZIER = 11, PROP_MUSHROOM = 12;
+export const PROP_KINDS = 13;
 export interface Prop { kind: number; x: number; y: number; z: number; s: number; rot: number; r: number; h: number }
 
 export type Mode = 'run' | 'levelup' | 'shop' | 'chest' | 'dead' | 'won';
-// kind: 0 Händler-Schrein, 1 Truhe, 2 Machtschrein (dauerhafter Werte-Bonus)
-export interface Interactable { kind: 0 | 1 | 2; x: number; y: number; z: number; used: boolean; hold: number }
+// kind: 0 Händler-Schrein, 1 Truhe, 2 Machtschrein (Kraft wählen), 3 Beschwörungsaltar (Mini-Boss → Relikt)
+export type IKind = 0 | 1 | 2 | 3;
+export interface Interactable { kind: IKind; x: number; y: number; z: number; used: boolean; hold: number }
 
 const TAU = Math.PI * 2;
 const LIM = HALF - 3;
@@ -93,7 +98,7 @@ export class Sim {
   ekx = new Float32Array(MAX_ENEMIES); ekz = new Float32Array(MAX_ENEMIES);
   eslow = new Float32Array(MAX_ENEMIES); efrz = new Float32Array(MAX_ENEMIES); eblade = new Float32Array(MAX_ENEMIES);
   eaux = new Float32Array(MAX_ENEMIES); eaux2 = new Float32Array(MAX_ENEMIES);
-  eElite = new Uint8Array(MAX_ENEMIES); edmg = new Float32Array(MAX_ENEMIES);
+  eElite = new Uint8Array(MAX_ENEMIES); eMini = new Uint8Array(MAX_ENEMIES); edmg = new Float32Array(MAX_ENEMIES);
   eHigh = 0; eCount = 0;
   bossIdx = -1;
 
@@ -119,7 +124,14 @@ export class Sim {
   tr = new Float32Array(MAX_TELE); tlen = new Float32Array(MAX_TELE); tang = new Float32Array(MAX_TELE);
   ttime = new Float32Array(MAX_TELE); tdur = new Float32Array(MAX_TELE); tdmg = new Float32Array(MAX_TELE);
 
+  // ---- Brandflächen (Inferno-Stab) ----
+  fAlive = new Uint8Array(MAX_PATCH);
+  fx_ = new Float32Array(MAX_PATCH); fz_ = new Float32Array(MAX_PATCH); fr = new Float32Array(MAX_PATCH);
+  flife = new Float32Array(MAX_PATCH); fmax = new Float32Array(MAX_PATCH); fdmg = new Float32Array(MAX_PATCH); ftick = new Float32Array(MAX_PATCH);
+
   // ---- Welt & Meta ----
+  bossKills = 0;
+  ruinSites: { x: number; z: number }[] = [];
   props: Prop[] = [];
   private propGrid: Grid;
   interact: Interactable[] = [];
@@ -147,14 +159,20 @@ export class Sim {
   private bossIdxNext = 0;
   private nextElite = ELITE.start;
 
-  constructor(seed: number, public maxAlive = 1100) {
+  constructor(seed: number, public maxAlive = 1100, public meta: MetaBonus = noMeta()) {
     this.rng = new Rng(seed);
     this.terrain = new Terrain(seed);
     this.hy = this.phy = this.terrain.height(0, 0);
+    this.findRuinSites();
     this.placeInteractables();
-    this.propGrid = new Grid(WORLD + 40, 8, 2000);
+    this.propGrid = new Grid(WORLD + 40, 8, 3000);
+    this.placeRuins();
     this.placeProps(seed);
+    this.scatterPowerups();
     this.weapons.push(newWeapon(W_SPEAR));
+    this.recalcStats();
+    this.hp = this.stats.maxHp;
+    this.gold = meta.gold;
   }
 
   r(): number { return this.rng.next(); }
@@ -172,7 +190,8 @@ export class Sim {
     const s = baseStats();
     for (const p of this.passiveList) PASSIVES[p.id].apply(s, RARITIES[p.r].mult);
     for (let i = 0; i < ITEMS.length; i++) for (let k = 0; k < this.items[i]; k++) ITEMS[i].apply?.(s);
-    s.maxHp += this.bonusHp;
+    s.maxHp += this.bonusHp + this.meta.hp;
+    s.dmg += this.meta.dmg; s.xpMul += this.meta.xp; s.speed += this.meta.speed; s.luck += this.meta.luck;
     this.stats = s;
     if (s.maxHp > oldMax) this.hp += s.maxHp - oldMax;
     this.hp = Math.min(this.hp, s.maxHp);
@@ -202,6 +221,7 @@ export class Sim {
     this.updateEnemies(dt);
     updateWeapons(this, dt);
     this.updateRelics(dt);
+    this.updatePatches(dt);
     this.updateProjectiles(dt);
     this.updateTele(dt);
     this.flushBooms();
@@ -230,7 +250,7 @@ export class Sim {
     const n = this.propGrid.query(x, z, r + 2.5, this.qP);
     for (let k = 0; k < n; k++) {
       const p = this.props[this.qP[k]];
-      if (feet - p.y > p.h) continue; // drübergesprungen
+      if (p.r <= 0 || feet - p.y > p.h) continue; // reine Deko / drübergesprungen
       const dx = x - p.x, dz = z - p.z, rr = p.r + r, d2 = dx * dx + dz * dz;
       if (d2 >= rr * rr) continue;
       const d = Math.sqrt(d2) || 0.001;
@@ -369,6 +389,29 @@ export class Sim {
     this.pendingZaps.length = 0;
   }
 
+  addPatch(x: number, z: number, r: number, dur: number, dmg: number) {
+    for (let i = 0; i < MAX_PATCH; i++) {
+      if (this.fAlive[i]) continue;
+      this.fAlive[i] = 1;
+      this.fx_[i] = x; this.fz_[i] = z; this.fr[i] = r;
+      this.flife[i] = this.fmax[i] = dur; this.fdmg[i] = dmg; this.ftick[i] = 0;
+      return;
+    }
+  }
+
+  // Brandflächen verbrennen alles, was darin steht (alle 0,3 s)
+  private updatePatches(dt: number) {
+    for (let i = 0; i < MAX_PATCH; i++) {
+      if (!this.fAlive[i]) continue;
+      this.flife[i] -= dt;
+      if (this.flife[i] <= 0) { this.fAlive[i] = 0; continue; }
+      this.ftick[i] -= dt;
+      if (this.ftick[i] > 0) continue;
+      this.ftick[i] = 0.3;
+      this.aoe(this.fx_[i], this.fz_[i], this.fr[i], this.fdmg[i], 0, W_INFERNO);
+    }
+  }
+
   private updateRelics(dt: number) {
     const n = this.items[I_STARFALL];
     if (!n) return;
@@ -387,7 +430,11 @@ export class Sim {
   // ================= Welt aufbauen =================
   private placeInteractables() {
     const T = this.terrain;
-    const put = (kind: 0 | 1 | 2, minD: number, maxD: number) => {
+    // Beschwörungsaltäre stehen in der Mitte der ersten Ruinenstätten
+    for (const site of this.ruinSites.slice(0, 7)) {
+      this.interact.push({ kind: 3, x: site.x, y: T.height(site.x, site.z), z: site.z, used: false, hold: 0 });
+    }
+    const put = (kind: IKind, minD: number, maxD: number) => {
       for (let tries = 0; tries < 60; tries++) {
         const a = this.r() * TAU, d = minD + this.r() * (maxD - minD);
         const x = Math.sin(a) * d, z = Math.cos(a) * d;
@@ -403,6 +450,65 @@ export class Sim {
     for (let i = 0; i < 9; i++) put(0, 45, LIM);
     for (let i = 0; i < 13; i++) put(2, 40, LIM);
     for (let i = 0; i < 34; i++) put(1, 28, LIM);
+    for (let i = 0; i < 4; i++) put(3, 50, LIM);
+  }
+
+  // flache Plätze für Ruinenstätten (Radius ~9 m eben)
+  private findRuinSites() {
+    const T = this.terrain;
+    for (let tries = 0; tries < 400 && this.ruinSites.length < 11; tries++) {
+      const x = (this.r() - 0.5) * (WORLD - 40), z = (this.r() - 0.5) * (WORLD - 40);
+      if (x * x + z * z < 40 * 40) continue;
+      if (this.ruinSites.some((s) => Math.hypot(s.x - x, s.z - z) < 55)) continue;
+      const h = T.height(x, z);
+      let flat = true;
+      for (let k = 0; k < 8 && flat; k++) {
+        const a = (k / 8) * TAU;
+        if (Math.abs(T.height(x + Math.sin(a) * 8, z + Math.cos(a) * 8) - h) > 0.8) flat = false;
+      }
+      if (flat) this.ruinSites.push({ x, z });
+    }
+  }
+
+  private addProp(kind: number, x: number, z: number, s: number, rot: number, r: number, h: number) {
+    this.propGrid.insert(this.props.length, x, z);
+    this.props.push({ kind, x, y: this.terrain.height(x, z), z, s, rot, r, h });
+  }
+
+  // Ruinenstätten: Steinboden, Säulenkreis (teils eingestürzt), zwei Mauerstücke, Feuerschalen
+  private placeRuins() {
+    const rng = new Rng(Math.floor(this.r() * 1e9));
+    for (const site of this.ruinSites) {
+      const { x, z } = site;
+      this.addProp(PROP_FLOOR, x, z, 1, rng.next() * TAU, 0, 0);
+      const n = 8, R = 7.5, rot0 = rng.next() * TAU;
+      for (let k = 0; k < n; k++) {
+        if (rng.next() < 0.3) continue;
+        const a = rot0 + (k / n) * TAU, s = rng.range(0.85, 1.25);
+        this.addProp(PROP_PILLAR, x + Math.sin(a) * R, z + Math.cos(a) * R, s, rng.next() * TAU, 0.75 * s, 99);
+      }
+      for (let w = 0; w < 2; w++) {
+        const a = rot0 + rng.next() * TAU, d = 11 + rng.next() * 3;
+        const wx = x + Math.sin(a) * d, wz = z + Math.cos(a) * d, wr = a + Math.PI / 2;
+        this.addProp(PROP_WALL, wx, wz, 1, wr, 0, 0);
+        // Kollision der Mauer als drei Kreise entlang der Länge
+        for (const off of [-1.5, 0, 1.5]) {
+          this.addProp(PROP_COLLIDER, wx + Math.cos(wr) * off, wz - Math.sin(wr) * off, 1, 0, 0.75, 99);
+        }
+      }
+      for (const a of [rot0 + 0.4, rot0 + Math.PI + 0.4]) {
+        this.addProp(PROP_BRAZIER, x + Math.sin(a) * 4.2, z + Math.cos(a) * 4.2, 1, 0, 0.55, 99);
+      }
+    }
+  }
+
+  // ein paar Powerups liegen von Anfang an verstreut auf der Karte
+  private scatterPowerups() {
+    for (let k = 0; k < 26; k++) {
+      const x = (this.r() - 0.5) * (WORLD - 30), z = (this.r() - 0.5) * (WORLD - 30);
+      if (x * x + z * z < 30 * 30) continue;
+      this.spawnPickup(K_BUFF + Math.floor(this.r() * BUFFS.length), x, z, 1, 0);
+    }
   }
 
   private placeProps(seed: number) {
@@ -411,6 +517,7 @@ export class Sim {
     const SHAPE: Record<number, [number, number]> = {
       [PROP_TREE_PINK]: [0.55, 99], [PROP_TREE_MINT]: [0.55, 99], [PROP_ROCK]: [1.0, 0.9], [PROP_DEADTREE]: [0.45, 99],
       [PROP_PILLAR]: [0.75, 99], [PROP_CRYSTAL]: [1.1, 99], [PROP_OBELISK]: [0.9, 99], [PROP_GRAVE]: [0.45, 1.0],
+      [PROP_MUSHROOM]: [0.55, 99], [PROP_BRAZIER]: [0.55, 99],
     };
     // biome: [min, max] des Biom-Werts, in dem die Art vorkommt
     const add = (kind: number, count: number, minS: number, maxS: number, bMin = 0, bMax = 1) => {
@@ -423,6 +530,7 @@ export class Sim {
         const y = T.height(x, z);
         if (Math.abs(T.height(x + 1, z) - y) > 0.5 || Math.abs(T.height(x, z + 1) - y) > 0.5) continue;
         if (this.interact.some((o) => Math.abs(o.x - x) < 5 && Math.abs(o.z - z) < 5)) continue;
+        if (this.ruinSites.some((s) => Math.abs(s.x - x) < 16 && Math.abs(s.z - z) < 16)) continue;
         const s = rng.range(minS, maxS);
         const [r, h] = SHAPE[kind];
         this.propGrid.insert(this.props.length, x, z);
@@ -437,7 +545,9 @@ export class Sim {
     add(PROP_GRAVE, 70, 0.8, 1.2, 0, 0.4);
     add(PROP_CRYSTAL, 80, 0.8, 1.8, 0.58, 1);
     add(PROP_OBELISK, 22, 1, 1.4, 0.6, 1);
-    add(PROP_PILLAR, 70, 0.8, 1.3); // Ruinen überall verstreut
+    add(PROP_MUSHROOM, 45, 0.8, 1.5, 0, 0.45); // leuchtende Riesenpilze im Totholz
+    add(PROP_BRAZIER, 20, 1, 1);
+    add(PROP_PILLAR, 50, 0.8, 1.3); // einzelne Ruinen überall verstreut
     add(PROP_ROCK, 150, 0.5, 1.8);
   }
 
@@ -457,6 +567,7 @@ export class Sim {
     const scale = elite ? (type === E_GOLEM ? 1.9 : ELITE.scale) : 1;
     const hpMul = elite ? ELITE.hp : 1;
     this.eElite[i] = elite ? 1 : 0;
+    this.eMini[i] = 0;
     this.edmg[i] = d.dmg * (d.boss ? 1 : dmgScale(t)) * (elite ? ELITE.dmg : 1);
     this.eAlive[i] = 1; this.eType[i] = type; this.eState[i] = 0;
     this.ex[i] = this.epx[i] = x; this.ez[i] = this.epz[i] = z;
@@ -475,11 +586,15 @@ export class Sim {
   private pickType(): number {
     const t = this.time;
     const w0 = 10, w1 = t >= 50 ? 4 + t / 120 : 0, w2 = t >= 110 ? 3 : 0, w3 = t >= 170 ? 3 : 0, w4 = t >= 230 ? 1.2 + t / 400 : 0;
-    let p = this.r() * (w0 + w1 + w2 + w3 + w4);
+    const w5 = t >= 80 ? 3 : 0, w6 = t >= 200 ? 2.5 : 0, w7 = t >= 290 ? 2 : 0; // Fledermaus, Skelett, Schattenwandler
+    let p = this.r() * (w0 + w1 + w2 + w3 + w4 + w5 + w6 + w7);
     if ((p -= w0) < 0) return E_BEETLE;
     if ((p -= w1) < 0) return E_WOLF;
     if ((p -= w2) < 0) return E_SHAMAN;
     if ((p -= w3) < 0) return E_WISP;
+    if ((p -= w5) < 0) return E_BAT;
+    if ((p -= w6) < 0) return E_SKELETON;
+    if ((p -= w7) < 0) return E_SHADE;
     return E_GOLEM;
   }
 
@@ -782,6 +897,45 @@ export class Sim {
             if (phase >= 2 && this.time % 14 < dt) this.spawnEnemy(this.pickType(), this.ex[i] + 5, this.ez[i], true);
             break;
           }
+          case E_SKELETON: {
+            // holt aus (kurze Linie vor sich), dann Hieb
+            if (this.eState[i] === 0 && dist < 2.9 * sc && this.ecd[i] <= 0) {
+              this.eState[i] = 1; this.etimer[i] = 0.55;
+              this.addTele(T_LINE, this.ex[i], this.ez[i], 1.8 * sc, 3.4 * sc, Math.atan2(nx, nz), 0.55, edmg * 1.4);
+            }
+            if (this.eState[i] === 1) {
+              spd = 0;
+              if (this.etimer[i] <= 0) { this.eState[i] = 0; this.ecd[i] = 2.4; }
+            }
+            break;
+          }
+          case E_BAT: {
+            // flattert im Zickzack
+            const w = Math.sin(this.time * 6 + i * 1.7) * 0.9;
+            mvx = nx - nz * w; mvz = nz + nx * w;
+            const l = Math.hypot(mvx, mvz) || 1;
+            mvx /= l; mvz /= l;
+            break;
+          }
+          case E_SHADE: {
+            // markiert deinen Standort und taucht dort auf
+            if (this.eState[i] === 0 && dist > 5 && dist < 20 && this.ecd[i] <= 0) {
+              this.eState[i] = 3; this.etimer[i] = 0.9; this.eaux[i] = hx; this.eaux2[i] = hz;
+              this.addTele(T_CIRCLE, hx, hz, 2.2 * sc, 0, 0, 0.9, edmg * 1.3);
+            }
+            if (this.eState[i] === 3) {
+              spd = 0;
+              if (this.etimer[i] <= 0) {
+                this.emit(EV_BLINK, this.ex[i], this.ey[i] + 1, this.ez[i]);
+                const a = this.r() * TAU;
+                this.ex[i] = this.epx[i] = clampW(this.eaux[i] + Math.sin(a) * 1.6);
+                this.ez[i] = this.epz[i] = clampW(this.eaux2[i] + Math.cos(a) * 1.6);
+                this.emit(EV_BLINK, this.ex[i], T.height(this.ex[i], this.ez[i]) + 1, this.ez[i]);
+                this.eState[i] = 0; this.ecd[i] = 5 + this.r() * 2;
+              }
+            }
+            break;
+          }
         }
       }
 
@@ -915,7 +1069,15 @@ export class Sim {
       this.hitStop = Math.max(this.hitStop, d.boss ? 0.15 : 0.08);
       this.emit(EV_BOOM, x, y, z, d.boss ? 9 : 4 * sc, B_DEATH);
     }
+    if (this.eMini[i]) {
+      this.eMini[i] = 0;
+      this.mode = 'chest';
+      this.chestOffers = genOffers(this, 'chest', 3);
+      this.chestTitle = '💀 Altar-Wächter besiegt – wähle ein Relikt';
+      this.emit(EV_CHEST, x, y, z);
+    }
     if (d.boss) {
+      this.bossKills++;
       if (t === FINAL_BOSS) { this.winT = 2.5; this.setBanner(`${d.name} fällt – Sieg!`); }
       else this.setBanner(`${d.name} besiegt!`);
     }
@@ -985,6 +1147,8 @@ export class Sim {
         continue;
       }
 
+      if (kind === P_SKULL) { this.updateSkull(i, dt); continue; }
+
       this.qlife[i] -= dt;
       if (this.qlife[i] <= 0) { this.qAlive[i] = 0; continue; }
       const g = T.height(this.qx[i], this.qz[i]) + 1.1;
@@ -1017,6 +1181,36 @@ export class Sim {
         }
         this.qpierce[i]--;
         if (this.qpierce[i] < 0) { this.qAlive[i] = 0; break; }
+      }
+    }
+  }
+
+  // Dämonenschädel: lenkt auf den nächsten Gegner, explodiert bei Kontakt oder am Ende
+  private updateSkull(i: number, dt: number) {
+    const x = this.qx[i], z = this.qz[i];
+    this.qlife[i] -= dt;
+    const m = this.nearest(x, z, 22, 1, this.qC);
+    if (m) {
+      const j = this.qC[0];
+      const dx = this.ex[j] - x, dz = this.ez[j] - z, l = Math.hypot(dx, dz) || 1;
+      const sp = 15, k = Math.min(1, dt * 5);
+      this.qvx[i] += ((dx / l) * sp - this.qvx[i]) * k;
+      this.qvz[i] += ((dz / l) * sp - this.qvz[i]) * k;
+      const rr = 0.5 + ENEMIES[this.eType[j]].radius * this.escale[j];
+      if (l < rr) this.qlife[i] = 0;
+    }
+    const g = this.terrain.height(x, z) + 1.6;
+    this.qy[i] += (g - this.qy[i]) * Math.min(1, dt * 6);
+    if (this.qlife[i] > 0) return;
+    const R = this.qr[i];
+    this.aoe(x, z, R, this.qdmg[i], 6, W_DEMON);
+    this.emit(EV_BOOM, x, this.qy[i] - 1, z, R, B_DEMON);
+    this.qAlive[i] = 0;
+    if (this.qbounce[i] > 0) {
+      // Höllenpakt: zerplatzt in zwei kleine Schädel
+      for (const s of [-1, 1]) {
+        const a = Math.atan2(this.qvx[i], this.qvz[i]) + s * 1.3;
+        this.spawnProj(P_SKULL, x, this.qy[i], z, Math.sin(a) * 10, 0, Math.cos(a) * 10, 1.6, this.qdmg[i] * 0.5, 0, 0, W_DEMON, R * 0.65);
       }
     }
   }
@@ -1134,10 +1328,29 @@ export class Sim {
     for (const it of this.interact) {
       if (it.used) continue;
       const d = Math.hypot(this.hx - it.x, this.hz - it.z);
-      const reach = it.kind === 2 ? 3.4 : 2.4;
+      const reach = it.kind === 2 ? 3.4 : it.kind === 3 ? 2.8 : 2.4;
       if (d > reach || Math.abs(this.hy - it.y) > 1.6) {
         // Machtschrein entlädt sich langsam, wenn man rausgeht
         it.hold = it.kind === 2 ? Math.max(0, it.hold - dt * 0.5) : 0;
+        continue;
+      }
+      if (it.kind === 3) {
+        it.hold += dt;
+        this.interactProgress = Math.min(1, it.hold / ALTAR_TIME);
+        this.interactLabel = 'Beschwörungsaltar … ein Wächter erwacht';
+        if (it.hold < ALTAR_TIME) continue;
+        it.used = true;
+        // Mini-Boss: großer Elite-Gegner mit viel HP; besiegt → Relikt-Wahl
+        const type = this.pickType(), a = this.r() * TAU;
+        const j = this.spawnEnemy(type, it.x + Math.sin(a) * 7, it.z + Math.cos(a) * 7, true);
+        if (j >= 0) {
+          this.escale[j] = type === E_GOLEM ? 2.6 : 2.3;
+          this.ehp[j] = this.emax[j] = this.emax[j] * 5;
+          this.edmg[j] *= 1.3;
+          this.eMini[j] = 1;
+        }
+        this.setBanner(`Altar-Wächter: ${ENEMIES[type].name}!`);
+        this.emit(EV_ALTAR, it.x, it.y, it.z);
         continue;
       }
       if (it.kind === 2) {
