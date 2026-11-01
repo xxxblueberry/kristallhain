@@ -4,6 +4,7 @@ import { TICK, BOSSES } from './core/data';
 import { View } from './render/view';
 import { Input } from './input';
 import { Sfx } from './audio';
+import { Music } from './music';
 import { UI } from './ui';
 import { loadSave, writeSave } from './save';
 import { createAssassin, createWanderer, loadAssassin, type AssassinParts } from './render/hero';
@@ -17,6 +18,8 @@ const view = new View(document.getElementById('app')!, lowQ);
 const ui = new UI(document.getElementById('ui')!, isTouch);
 const input = new Input(view.renderer.domElement, ui.joyBase, ui.joyKnob, ui.jumpBtn);
 const sfx = new Sfx();
+const music = new Music();
+let beatT = 0;
 
 const newSeed = () => Math.floor(Math.random() * 1e9);
 let sim = new Sim(newSeed(), enemyCap);
@@ -26,6 +29,8 @@ let acc = 0;
 
 function applySettings() {
   sfx.setVolume(save.settings.volume);
+  music.setVolume(save.settings.music);
+  view.setQuality(save.settings.quality === 'hoch');
   view.shakeOn = save.settings.shake;
   view.numbersOn = save.settings.numbers;
   view.zoom = view.dist = save.settings.zoom;
@@ -134,7 +139,10 @@ ui.zoomBtn.addEventListener('click', () => {
 });
 
 // Audio darf erst nach einer Eingabe starten (iOS/Chrome)
-const unlock = () => sfx.unlock();
+const unlock = () => {
+  sfx.unlock();
+  if (sfx.context) music.start(sfx.context);
+};
 window.addEventListener('pointerdown', unlock);
 window.addEventListener('keydown', unlock);
 window.addEventListener('gamepadconnected', unlock);
@@ -196,6 +204,23 @@ function frame(now: number) {
       view.zoom = preview ? 7 : 24;
       view.pitchTarget = preview ? 0.22 : 0.3; // flach: Berge am Horizont sichtbar
     }
+  }
+
+  // Musik folgt dem Geschehen: mehr Gegner = mehr Ebenen, Boss = Moll + volle Drums
+  let mi = 0.12, boss = false;
+  if (state === 'run' || state === 'pause') {
+    boss = sim.bossIdx >= 0;
+    mi = boss ? 1 : 0.3 + Math.min(1, sim.eCount / 450) * 0.45 + Math.min(0.1, sim.time / 600);
+    if (sim.mode === 'dead') mi = 0;
+  }
+  music.set({ intensity: mi, boss, muffled: state !== 'run' && state !== 'menu' || (state === 'run' && sim.mode !== 'run') });
+
+  // Wenig HP: Herzschlag + pulsierender Rand
+  const low = state === 'run' && sim.mode === 'run' && sim.hp < sim.stats.maxHp * 0.3;
+  ui.setLowHp(low);
+  if (low) {
+    beatT -= dt;
+    if (beatT <= 0) { sfx.heartbeat(); beatT = 0.55 + (sim.hp / (sim.stats.maxHp * 0.3)) * 0.5; }
   }
 
   const live = state === 'run' && sim.mode === 'run';

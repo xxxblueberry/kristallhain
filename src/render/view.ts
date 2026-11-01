@@ -1,5 +1,10 @@
 // Darstellung: liest den Sim-Zustand, zeichnet alles instanziert, Kamera & Spielgefühl.
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import {
   Sim, EV_HIT, EV_KILL, EV_XP, EV_HURT, EV_LEVEL, EV_BOOM, EV_JUMP, EV_LAND, EV_CHAIN, EV_NOVA, EV_GOLD, EV_CHEST,
   EV_HEAL, EV_SHIELD, EV_REVIVE, EV_SHOOT, EV_SLASH, EV_MAGNET, EV_BLINK, EV_STRIDE, P_SPEAR, P_SHARD, P_BULLET, B_METEOR, B_ENEMY, B_PLAYER, B_STAR,
@@ -72,6 +77,11 @@ export class View {
   pitchTarget = 0.95; // Spiel: steil von oben; Menü: flacher, damit man die Berge sieht
   private texUniform = { value: 0.9 };
   private backdrop: THREE.Mesh;
+  private composer: EffectComposer;
+  private bloom: UnrealBloomPass;
+  private hq = true;
+  private pollen: THREE.Points;
+  private pollenVel: Float32Array;
   dist = 20;
   zoom = 20; // Zielabstand, per Mausrad/Tasten/Schultertasten
   static readonly ZOOM_MIN = 13;
@@ -203,6 +213,49 @@ export class View {
     this.scene.add(this.shadows);
 
     this.fx = new Fx(this.scene, lowQ);
+
+    // Post-Processing (nur bei Grafik "hoch"): weiches Leuchten heller Dinge + sanfte Vignette
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.42, 0.6, 0.9);
+    this.composer.addPass(this.bloom);
+    this.composer.addPass(new ShaderPass({
+      uniforms: { tDiffuse: { value: null } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+        void main(){
+          vec4 c = texture2D(tDiffuse, vUv);
+          float d = length((vUv - 0.5) * vec2(1.25, 1.0));
+          c.rgb *= mix(1.0, 0.72, smoothstep(0.45, 0.95, d));
+          c.rgb += vec3(0.025, 0.0, 0.03) * smoothstep(0.5, 1.0, d); // Hauch Lila am Rand
+          gl_FragColor = c;
+        }`,
+    }));
+    this.composer.addPass(new OutputPass());
+
+    // Schwebende Pollen/Glitzer um den Helden
+    const PN = lowQ ? 120 : 260;
+    const pg = new THREE.BufferGeometry();
+    const pp = new Float32Array(PN * 3);
+    this.pollenVel = new Float32Array(PN * 3);
+    for (let i = 0; i < PN; i++) {
+      pp[i * 3] = (Math.random() - 0.5) * 50; pp[i * 3 + 1] = Math.random() * 12; pp[i * 3 + 2] = (Math.random() - 0.5) * 50;
+      this.pollenVel[i * 3] = (Math.random() - 0.5) * 0.6; this.pollenVel[i * 3 + 1] = 0.15 + Math.random() * 0.35; this.pollenVel[i * 3 + 2] = (Math.random() - 0.5) * 0.6;
+    }
+    pg.setAttribute('position', new THREE.BufferAttribute(pp, 3));
+    const dot = document.createElement('canvas');
+    dot.width = dot.height = 32;
+    const dctx = dot.getContext('2d')!;
+    const grad = dctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.4, 'rgba(255,240,250,0.5)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+    dctx.fillStyle = grad; dctx.fillRect(0, 0, 32, 32);
+    this.pollen = new THREE.Points(pg, new THREE.PointsMaterial({
+      size: 0.35, map: new THREE.CanvasTexture(dot), color: 0xfff0d8, transparent: true, opacity: 0.8,
+      depthWrite: false, blending: THREE.AdditiveBlending, fog: true,
+    }));
+    this.pollen.frustumCulled = false;
+    this.scene.add(this.pollen);
+
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -210,6 +263,8 @@ export class View {
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
     this.renderer.setSize(w, h);
+    this.composer?.setPixelRatio(this.renderer.getPixelRatio());
+    this.composer?.setSize(w, h);
     this.camera.aspect = w / h;
     // im Hochformat weiter herauszoomen, damit genug sichtbar bleibt
     this.camera.fov = w < h ? 70 : 50;
@@ -217,6 +272,7 @@ export class View {
   }
 
   setTextures(on: boolean) { this.texUniform.value = on ? 0.9 : 0; }
+  setQuality(high: boolean) { this.hq = high; }
 
   attach(sim: Sim) {
     if (this.world) {
@@ -531,6 +587,22 @@ export class View {
     this.world?.update(this.time);
     this.fx.tele.update(sim);
     this.fx.update(dt);
-    this.renderer.render(this.scene, this.camera);
+
+    // Pollen treiben lassen und um den Helden herum "umklappen"
+    const pa2 = this.pollen.geometry.attributes.position as THREE.BufferAttribute;
+    const P2 = pa2.array as Float32Array, V = this.pollenVel;
+    for (let i = 0; i < P2.length; i += 3) {
+      P2[i] += (V[i] + Math.sin(this.time * 0.7 + i) * 0.25) * dt;
+      P2[i + 1] += V[i + 1] * dt;
+      P2[i + 2] += (V[i + 2] + Math.cos(this.time * 0.6 + i) * 0.25) * dt;
+      const dx = P2[i] - this.camT.x, dz = P2[i + 2] - this.camT.z;
+      if (dx > 25) P2[i] -= 50; else if (dx < -25) P2[i] += 50;
+      if (dz > 25) P2[i + 2] -= 50; else if (dz < -25) P2[i + 2] += 50;
+      if (P2[i + 1] > this.camT.y + 12 || P2[i + 1] < this.camT.y - 2) P2[i + 1] = this.camT.y + Math.random() * 2;
+    }
+    pa2.needsUpdate = true;
+
+    if (this.hq) this.composer.render(dt);
+    else this.renderer.render(this.scene, this.camera);
   }
 }

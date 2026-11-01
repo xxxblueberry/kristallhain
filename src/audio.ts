@@ -26,6 +26,15 @@ export class Sfx {
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
   }
 
+  get context(): AudioContext | null { return this.ctx; }
+
+  // Herzschlag bei wenig HP
+  heartbeat() {
+    if (!this.ctx || !this.ok('beat', 0.5)) return;
+    this.tone('sine', 70, 45, 0.12, 0.22);
+    this.tone('sine', 65, 42, 0.12, 0.16, 0.16);
+  }
+
   setVolume(v: number) {
     this.volume = v;
     if (this.master) this.master.gain.value = v;

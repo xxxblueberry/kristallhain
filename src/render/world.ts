@@ -75,6 +75,7 @@ export class World {
   private chests: THREE.Mesh[] = [];
   private usedMat = new THREE.MeshLambertMaterial({ color: 0x9a94a8, flatShading: true });
   private disposables: { dispose(): void }[] = [];
+  private windTime = { value: 0 };
 
   constructor(private sim: Sim, lowQ: boolean, private texUniform: { value: number }) {
     this.buildTerrain(lowQ);
@@ -152,12 +153,14 @@ export class World {
   private buildProps(lowQ: boolean) {
     const rng = new Rng(9137);
     const mat = this.track(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+    const treeMat = this.track(this.windMaterial(1.1, 0.06));
+    const flowerMat = this.track(this.windMaterial(0.05, 0.35));
     const f = lowQ ? 0.55 : 1;
     // Bäume & Felsen kommen aus der Simulation (dort mit Kollision)
     const geos = [treeGeo(0xffc2dc, 0xffd6e8), treeGeo(0xa8e6c8, 0xc4f0d8), rockGeo()];
     geos.forEach((g, kind) => {
       const list = this.sim.props.filter((p) => p.kind === kind);
-      const mesh = new THREE.InstancedMesh(this.track(g), mat, Math.max(1, list.length));
+      const mesh = new THREE.InstancedMesh(this.track(g), kind === 2 ? mat : treeMat, Math.max(1, list.length));
       const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
       list.forEach((p, i) => {
         q.setFromAxisAngle(up, p.rot);
@@ -166,7 +169,7 @@ export class World {
       mesh.count = list.length;
       this.group.add(mesh);
     });
-    for (const c of [0xffb8d8, 0xfff0a0, 0xc6b8ff, 0xffffff]) this.scatter(flowerGeo(c), mat, Math.floor(260 * f), rng, 0.8, 1.4);
+    for (const c of [0xffb8d8, 0xfff0a0, 0xc6b8ff, 0xffffff]) this.scatter(flowerGeo(c), flowerMat, Math.floor(260 * f), rng, 0.8, 1.4);
 
     // Schwebende Kristalle (leuchtend, wippend)
     const T = this.sim.terrain;
@@ -187,6 +190,24 @@ export class World {
       this.crystalData.push(data);
       this.group.add(mesh);
     }
+  }
+
+  // Wiegt Instanzen im Wind: oberhalb von `from` (lokale Höhe) wächst der Ausschlag mit der Höhe.
+  // Phase hängt von der Instanz-Position ab, damit nicht alles im Gleichtakt schwingt.
+  private windMaterial(from: number, amp: number) {
+    const m = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    const uTime = this.windTime;
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = uTime;
+      sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        vec3 ip = instanceMatrix[3].xyz;
+        float hgt = max(0.0, position.y - ${from.toFixed(2)});
+        float sway = sin(uTime * 1.5 + ip.x * 0.31 + ip.z * 0.17) * 0.7 + sin(uTime * 3.3 + ip.x) * 0.3;
+        transformed.x += sway * hgt * ${amp.toFixed(3)};
+        transformed.z += sway * hgt * ${(amp * 0.6).toFixed(3)};`);
+    };
+    m.customProgramCacheKey = () => `wind${from}_${amp}`;
+    return m;
   }
 
   private buildInteractables() {
@@ -214,6 +235,7 @@ export class World {
   }
 
   update(time: number) {
+    this.windTime.value = time;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), v = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
     for (let c = 0; c < this.crystals.length; c++) {
       const mesh = this.crystals[c], d = this.crystalData[c];

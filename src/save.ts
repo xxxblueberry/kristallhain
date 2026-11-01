@@ -6,6 +6,8 @@ export interface Settings {
   zoom: number;
   skin: string;
   textures: boolean;
+  music: number;
+  quality: 'hoch' | 'niedrig';
 }
 
 export interface SaveData {
@@ -18,9 +20,13 @@ export interface SaveData {
 
 const KEY = 'kristallhain-save-v1';
 
+// Handys starten mit niedriger Grafik (kein Bloom), PCs mit hoher
+const defaultQuality = (): 'hoch' | 'niedrig' =>
+  typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches ? 'niedrig' : 'hoch';
+
 const defaults = (): SaveData => ({
   bestTime: 0, bestKills: 0, wins: 0, runs: 0,
-  settings: { volume: 0.7, shake: true, numbers: true, zoom: 20, skin: 'assassin', textures: true },
+  settings: { volume: 0.7, shake: true, numbers: true, zoom: 20, skin: 'assassin', textures: true, music: 0.6, quality: defaultQuality() },
 });
 
 export function loadSave(): SaveData {

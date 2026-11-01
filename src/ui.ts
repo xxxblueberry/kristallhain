@@ -57,9 +57,10 @@ export class UI {
       <div class="banner"></div>
       <div class="toast"></div>
       <div class="interact hidden"><div class="ilabel"></div><div class="ibar"><div class="ifill"></div></div></div>
-      <div class="vignette"></div>`;
+      <div class="vignette"></div>
+      <div class="lowhp"></div>`;
     root.appendChild(this.hud);
-    for (const k of ['xpbar', 'xpfill', 'xptext', 'lvl', 'hpfill', 'hptext', 'slots', 'passives', 'relics', 'timer', 'boss', 'bossname', 'bossfill', 'gold', 'kills', 'banner', 'toast', 'interact', 'ilabel', 'ifill', 'vignette']) {
+    for (const k of ['xpbar', 'xpfill', 'xptext', 'lvl', 'hpfill', 'hptext', 'slots', 'passives', 'relics', 'timer', 'boss', 'bossname', 'bossfill', 'gold', 'kills', 'banner', 'toast', 'interact', 'ilabel', 'ifill', 'vignette', 'lowhp']) {
       this.el[k] = this.hud.querySelector('.' + k)!;
     }
     this.mini = (this.hud.querySelector('.minimap') as HTMLCanvasElement).getContext('2d')!;
@@ -132,7 +133,7 @@ export class UI {
 
   private card(o: Offer, onClick: () => void, price?: number, disabled = false) {
     const i = offerInfo(o);
-    const e = h('button', `card k-${o.kind}` + (o.kind === 'weapon' && o.level === 1 ? ' new' : '')) as HTMLButtonElement;
+    const e = h('button', `card k-${o.kind} r${o.kind === 'weapon' ? 0 : o.rarity}` + (o.kind === 'weapon' && o.level === 1 ? ' new' : '')) as HTMLButtonElement;
     e.dataset.nav = '1';
     e.disabled = disabled;
     e.style.setProperty('--rc', i.color);
@@ -181,6 +182,11 @@ export class UI {
       { label: '−', onClick: () => { s.volume = Math.max(0, +(s.volume - 0.1).toFixed(1)); onChange(); render(); } },
       { label: '+', onClick: () => { s.volume = Math.min(1, +(s.volume + 0.1).toFixed(1)); onChange(); render(); } },
     ]);
+    row('Musik', `${Math.round(s.music * 100)}%`, [
+      { label: '−', onClick: () => { s.music = Math.max(0, +(s.music - 0.1).toFixed(1)); onChange(); render(); } },
+      { label: '+', onClick: () => { s.music = Math.min(1, +(s.music + 0.1).toFixed(1)); onChange(); render(); } },
+    ]);
+    row('Grafik', s.quality === 'hoch' ? 'Hoch (Leuchten)' : 'Niedrig (schneller)', [{ label: 'Umschalten', onClick: () => { s.quality = s.quality === 'hoch' ? 'niedrig' : 'hoch'; onChange(); render(); } }]);
     row('Bildschirmwackeln', s.shake ? 'An' : 'Aus', [{ label: 'Umschalten', onClick: () => { s.shake = !s.shake; onChange(); render(); } }]);
     row('Schadenszahlen', s.numbers ? 'An' : 'Aus', [{ label: 'Umschalten', onClick: () => { s.numbers = !s.numbers; onChange(); render(); } }]);
     row('Boden-Texturen', s.textures ? 'An' : 'Aus', [{ label: 'Umschalten', onClick: () => { s.textures = !s.textures; onChange(); render(); } }]);
@@ -303,6 +309,10 @@ export class UI {
 
   // ---------------- HUD ----------------
   showHud(v: boolean) { this.hud.classList.toggle('hidden', !v); }
+
+  setLowHp(v: boolean) {
+    this.set('lowhp', v ? 1 : 0, () => this.el.lowhp.classList.toggle('on', v));
+  }
 
   private set(key: string, value: string | number, fn: (v: string | number) => void) {
     if (this.cache[key] === value) return;
