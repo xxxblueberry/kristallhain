@@ -127,6 +127,7 @@ export class Sim {
   interactProgress = 0; interactLabel = '';
   banner = ''; bannerT = 0; toast = ''; toastT = 0;
   offers: Offer[] = []; shopOffers: Offer[] = []; chestOffers: Offer[] = []; rerollCost = 5;
+  chestTitle = '';
   ev = new Float32Array(MAX_EV * EV_STRIDE); evN = 0;
 
   // Puffer für Rasterabfragen (getrennt, da teils verschachtelt)
@@ -1145,13 +1146,12 @@ export class Sim {
         this.interactLabel = 'Machtschrein lädt … bleib im Kreis';
         if (it.hold < POWER_TIME) continue;
         it.used = true;
-        const o = genOffers(this, 'shrine', 1)[0];
-        applyOffer(this, o);
-        const info = offerInfo(o);
-        this.toast = `✦ Macht: ${info.icon} ${info.title} (${info.tag}) – ${info.desc}`;
-        this.toastT = 3;
-        this.emit(EV_POWER, it.x, it.y, it.z, o.rarity);
-        continue;
+        // 3 Kräfte zur Auswahl (Anzeige wie bei Truhen)
+        this.mode = 'chest';
+        this.chestOffers = genOffers(this, 'shrine', 3);
+        this.chestTitle = '✦ Machtschrein – wähle eine Kraft';
+        this.emit(EV_POWER, it.x, it.y, it.z, Math.max(...this.chestOffers.map((o) => o.rarity)));
+        return;
       }
       if (it.kind === 1) {
         // Truhe: sofort öffnen, wenn genug Gold da ist
@@ -1162,6 +1162,7 @@ export class Sim {
         this.chestCost = Math.round(this.chestCost * 1.35 + 3);
         this.mode = 'chest';
         this.chestOffers = genOffers(this, 'chest', 3);
+        this.chestTitle = '🎁 Truhe geöffnet!';
         this.emit(EV_CHEST, it.x, it.y, it.z);
         return;
       }

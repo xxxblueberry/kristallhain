@@ -1,5 +1,5 @@
 import type { Sim } from './sim';
-import { ITEMS, MAX_SLOTS, PASSIVES, RARITIES, RARITY_WEIGHTS, WEAPONS } from './data';
+import { ITEMS, MAX_SLOTS, PASSIVES, RARITIES, RARITY_WEIGHTS, WEAPONS, W_INFERNO } from './data';
 import { newWeapon } from './weapons';
 
 export type OfferKind = 'weapon' | 'passive' | 'item' | 'heal';
@@ -36,6 +36,7 @@ export function offerValid(s: Sim, o: Offer): boolean {
 function weaponPool(s: Sim): { o: Offer; w: number }[] {
   const pool: { o: Offer; w: number }[] = [];
   for (let id = 0; id < WEAPONS.length; id++) {
+    if (id >= W_INFERNO) continue; // Inferno-Stab, Blut-Langschwert, Dämonenschädel: noch nicht gebaut
     const ws = s.weapons.find((w) => w.id === id);
     if (ws) {
       if (ws.level < 5) pool.push({ o: { kind: 'weapon', id, level: ws.level + 1, rarity: 0, price: 0 }, w: 1.3 });

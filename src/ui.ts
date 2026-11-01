@@ -230,8 +230,8 @@ export class UI {
 
   showChest(sim: Sim, onPick: (i: number) => void) {
     const c = h('div', 'panel wide chest');
-    c.appendChild(h('h2', 'glow', '🎁 Truhe geöffnet!'));
-    c.appendChild(h('p', 'sub', 'Wähle ein Relikt'));
+    c.appendChild(h('h2', 'glow', sim.chestTitle || '🎁 Truhe geöffnet!'));
+    c.appendChild(h('p', 'sub', sim.chestOffers[0]?.kind === 'item' ? 'Wähle ein Relikt' : 'Wähle eine Verbesserung'));
     const row = h('div', 'cards');
     sim.chestOffers.forEach((o, i) => row.appendChild(this.card(o, () => onPick(i))));
     c.appendChild(row);

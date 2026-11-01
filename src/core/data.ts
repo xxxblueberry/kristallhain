@@ -8,7 +8,7 @@ export const MAX_TELE = 160;
 export const MAX_SLOTS = 6;
 // Boss-Zeitplan (Sekunden); der letzte ist der Endboss
 export const E_BEETLE = 0, E_WOLF = 1, E_SHAMAN = 2, E_WISP = 3, E_GOLEM = 4, E_HYDRA = 5, E_TITAN = 6, E_KING = 7, E_WITCH = 8,
-  E_QUEEN = 9, E_DARK = 10;
+  E_QUEEN = 9, E_DARK = 10, E_SKELETON = 11, E_BAT = 12, E_SHADE = 13;
 export const BOSSES = [
   { t: 120, type: E_KING, text: 'Der Käferkönig stampft heran!' },
   { t: 240, type: E_HYDRA, text: 'Die Kristall-Hydra erwacht!' },
@@ -67,10 +67,14 @@ export const ENEMIES: EnemyDef[] = [
   { name: 'Sturmhexe', hp: 5000, speed: 3.4, dmg: 18, radius: 1.8, xp: 160, gold: 50, color: 0xc6a8ff, flying: true, boss: true, tall: 4.5 },
   { name: 'Kristallspinnen-Königin', hp: 4200, speed: 2.8, dmg: 18, radius: 2.8, xp: 140, gold: 45, color: 0x9a7ad8, flying: false, boss: true, tall: 4 },
   { name: 'Der Schattenfürst', hp: 32000, speed: 2.6, dmg: 30, radius: 2.6, xp: 0, gold: 0, color: 0x6a3a9a, flying: false, boss: true, tall: 8 },
+  { name: 'Skelett-Krieger', hp: 45, speed: 2.7, dmg: 12, radius: 0.75, xp: 4, gold: 0.3, color: 0xd8d0c0, flying: false, boss: false, tall: 2.1 },
+  { name: 'Fledermaus', hp: 6, speed: 6.4, dmg: 4, radius: 0.45, xp: 1, gold: 0.08, color: 0x7a6a9a, flying: true, boss: false, tall: 1 },
+  { name: 'Schattenwandler', hp: 32, speed: 3.0, dmg: 10, radius: 0.7, xp: 4, gold: 0.3, color: 0x5a4a8a, flying: false, boss: false, tall: 2.3 },
 ];
 
 // ---------- Waffen ----------
-export const W_SPEAR = 0, W_SHARD = 1, W_BLADES = 2, W_CHAIN = 3, W_NOVA = 4, W_METEOR = 5, W_PISTOL = 6, W_KATANA = 7;
+export const W_SPEAR = 0, W_SHARD = 1, W_BLADES = 2, W_CHAIN = 3, W_NOVA = 4, W_METEOR = 5, W_PISTOL = 6, W_KATANA = 7,
+  W_INFERNO = 8, W_BLOODSWORD = 9, W_DEMON = 10;
 export const W_RELICS = 15; // Schadens-Statistik für Relikt-Effekte
 
 export interface WeaponDef {
@@ -88,6 +92,9 @@ export const WEAPONS: WeaponDef[] = [
   { name: 'Meteor-Stab', icon: '☄️', info: ['Meteore schlagen in Gegnergruppen ein', '+Einschlagsgröße, +Schaden', '+1 Meteor', '+Größe, schneller', '+1 Meteor, +Schaden'] },
   { name: 'Pistole', icon: '🔫', info: ['Schnelles Dauerfeuer auf den nächsten Gegner', '+Schaden, schneller', '+1 Kugel pro Schuss', 'Kugeln durchschlagen 1 Gegner', '+1 Kugel, +Schaden'] },
   { name: 'Samurai-Katana', icon: '⚔️', info: ['Blitzschneller Hieb im Halbkreis vor dir', '+Schaden, schneller', 'Hieb auch nach hinten', '+Reichweite, +Schaden', 'Klingensturm: +30% Schaden, schneller'] },
+  { name: 'Inferno-Stab', icon: '🔥', info: ['Flammenkegel auf den nächsten Gegner, der Boden brennt', '+Schaden, längere Flammen', 'Brennender Boden hält länger', '+Schaden, breiterer Kegel', 'Höllenfeuer: größere Brandflächen'] },
+  { name: 'Blut-Langschwert', icon: '🗡️', info: ['Gewaltiger Rundumhieb, heilt ein wenig', '+Schaden, größerer Radius', 'Zweiter Hieb direkt hinterher', '+Schaden, heilt mehr', 'Blutsturm: Hiebe schleudern Blutwellen'] },
+  { name: 'Dämonenschädel', icon: '👹', info: ['Brennende Schädel jagen Gegner und explodieren', '+1 Schädel', 'Größere Explosionen', '+1 Schädel, +Schaden', 'Höllenpakt: Schädel zerplatzen in zwei kleine'] },
 ];
 
 // ---------- Werte ----------
@@ -179,7 +186,7 @@ export const ITEMS: ItemDef[] = [
   { name: 'Schutzblase', icon: '🫧', rarity: 3, max: 3, info: 'Blockt alle 12 s einen Treffer' },
   { name: 'Donnerstiefel', icon: '🥾', rarity: 3, max: 3, info: 'Landung nach Sprung: Schockwelle um dich' },
   { name: 'Riesenherz', icon: '🫀', rarity: 3, max: 3, info: '+50 Max-HP und sofort heilen', apply: (s) => (s.maxHp += 50) },
-  { name: 'Zornklinge', icon: '🗡️', rarity: 4, max: 2, info: '+100% Krit-Schaden, +10% Krit', apply: (s) => { s.critDmg += 1; s.crit += 0.1; } },
+  { name: 'Zornklinge', icon: '💢', rarity: 4, max: 2, info: '+100% Krit-Schaden, +10% Krit', apply: (s) => { s.critDmg += 1; s.crit += 0.1; } },
   { name: 'Phönixfeder', icon: '🔥', rarity: 4, max: 2, info: 'Einmal wiederbeleben mit halber HP' },
   { name: 'Sternenregen', icon: '🌠', rarity: 4, max: 3, info: 'Alle 5 s regnen Sterne auf Gegner' },
   { name: 'Sprintband', icon: '🎽', rarity: 0, max: 3, info: '+12% Laufgeschwindigkeit', apply: (s) => (s.speed += 0.12) },
@@ -188,8 +195,41 @@ export const ITEMS: ItemDef[] = [
   { name: 'Jägermal', icon: '🏹', rarity: 2, max: 3, info: '+40% Schaden gegen Elites und Bosse' },
   { name: 'Midas-Krone', icon: '👑', rarity: 3, max: 1, info: 'Truhen kosten 30% weniger' },
   { name: 'Zeitsanduhr', icon: '⏳', rarity: 4, max: 2, info: '-15% Abklingzeit aller Waffen', apply: (s) => (s.cd *= 0.85) },
-  { name: 'Totenkopf-Amulett', icon: '💀', rarity: 4, max: 1, info: '+2% Schaden je 100 Kills (max. +50%)' },
+  { name: 'Totenkopf-Amulett', icon: '📿', rarity: 4, max: 1, info: '+2% Schaden je 100 Kills (max. +50%)' },
 ];
+
+// ---------- Profil-Fortschritt (zwischen den Läufen) ----------
+export const profileNeed = (level: number) => 400 + level * 300;
+
+// Dauerhafte Startboni, die das Profil-Level freischaltet
+export interface MetaBonus { hp: number; dmg: number; xp: number; speed: number; luck: number; gold: number }
+export const noMeta = (): MetaBonus => ({ hp: 0, dmg: 0, xp: 0, speed: 0, luck: 0, gold: 0 });
+
+export interface ProfileReward { level: number; text: string; skin?: string; bonus?: Partial<MetaBonus> }
+export const PROFILE_REWARDS: ProfileReward[] = [
+  { level: 2, text: '+10 Max-HP zu Beginn', bonus: { hp: 10 } },
+  { level: 3, text: 'Skin: Blutmond-Assassine', skin: 'assassin_blood' },
+  { level: 4, text: '+5% Erfahrung', bonus: { xp: 0.05 } },
+  { level: 5, text: 'Skin: Schatten-Wanderin', skin: 'wanderer_shadow' },
+  { level: 6, text: '+5% Schaden', bonus: { dmg: 0.05 } },
+  { level: 7, text: 'Skin: Frost-Assassine', skin: 'assassin_frost' },
+  { level: 8, text: '+15 Gold zu Beginn', bonus: { gold: 15 } },
+  { level: 9, text: '+5% Laufgeschwindigkeit', bonus: { speed: 0.05 } },
+  { level: 10, text: 'Skin: Gold-Assassine', skin: 'assassin_gold' },
+  { level: 11, text: '+10 Max-HP zu Beginn', bonus: { hp: 10 } },
+  { level: 12, text: '+10% Glück', bonus: { luck: 0.1 } },
+  { level: 13, text: '+5% Schaden', bonus: { dmg: 0.05 } },
+  { level: 15, text: 'Skin: Dämonen-Assassine', skin: 'assassin_demon' },
+];
+
+export function metaFor(level: number): MetaBonus {
+  const m = noMeta();
+  for (const r of PROFILE_REWARDS) {
+    if (r.level > level || !r.bonus) continue;
+    for (const k of Object.keys(r.bonus) as (keyof MetaBonus)[]) m[k] += r.bonus[k]!;
+  }
+  return m;
+}
 
 // ---------- Powerups (zeitlich begrenzt, liegen auf dem Boden) ----------
 export const BUFFS = [
